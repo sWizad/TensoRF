@@ -1,10 +1,10 @@
 
 dataset_name = shiny
 datadir = data/shiny_for_eval/labjuice
-expname =  tensorf_lab
+expname =  tensorf_lab_ds2
 basedir = ./log
 
-downsample_train = 4.0
+downsample_train = 2.0
 ndc_ray = 1
 
 n_iters = 25000

@@ -1,2 +1,3 @@
 Set up pytorch1.10
 
+CUDA_VISIBLE_DEVICES=1 python train.py --config configs/lab.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/tensorf_lab_ds2/tensorf_lab_ds2.th  

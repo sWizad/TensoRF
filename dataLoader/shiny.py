@@ -5,6 +5,7 @@ import numpy as np
 import os
 from PIL import Image
 from torchvision import transforms as T
+from scipy.spatial.transform import Rotation, Slerp
 import pdb
 
 from .ray_utils import *
@@ -99,6 +100,39 @@ def render_path_spiral(c2w, up, rads, focal, zdelta, zrate, N_rots=2, N=120):
         render_poses.append(viewmatrix(z, up, c))
     return render_poses
 
+def webGLspiralPath(ref_rotation, ref_translation, dmin, dmax, total_frame = 120, spin_radius = 10, total_spin = 1):
+  spin_speed = 2*np.pi / total_frame * total_spin
+  render_poses = []
+  # matrix conversation helper
+  def dcm_to_4x4(r,t):
+    camera_matrix = np.zeros((4,4),dtype=np.float32)
+    camera_matrix[:3,:3] = r
+    if len(t.shape) > 1:
+      camera_matrix[:3,3:4] = t
+    else:
+      camera_matrix[:3,3] = t
+    camera_matrix[3,3] = 1.0
+    return camera_matrix
+
+  for i in range(total_frame):
+    anim_time = spin_speed * i
+    leftright = np.sin(anim_time) * spin_radius / 500.0
+    updown = np.cos(anim_time) * spin_radius / 500.0
+    r = ref_rotation
+    t = ref_translation
+    cam = dcm_to_4x4(r,t)
+    dist = (dmin + dmax) / 2.0
+    translation_matrix = dcm_to_4x4(np.eye(3), np.array([0,0, -dist]))
+    translation_matrix2 = dcm_to_4x4(np.eye(3), np.array([0,0, dist]))
+    euler_3x3 = Rotation.from_euler('yxz', [leftright, updown, 0]).as_dcm()
+    euler_4x4 = dcm_to_4x4(euler_3x3, np.array([0.0,0.0,0.0]))
+    output = translation_matrix2 @ euler_4x4 @  translation_matrix @ cam
+    output = output.astype(np.float32)
+    r = output[:3, :3]
+    t = output[:3, 3:4]
+    #render_poses[i] = output#{'r': r, 't': t}
+    render_poses.append(output)
+  return render_poses
 
 def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
     # center pose
@@ -115,8 +149,10 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
     # Get radii for spiral path
     zdelta = near_fars.min() * .2
     tt = c2ws_all[:, :3, 3]
-    rads = np.percentile(np.abs(tt), 90, 0) * rads_scale
-    render_poses = render_path_spiral(c2w, up, rads, focal, zdelta, zrate=.5, N=N_views)
+    rads = np.percentile(np.abs(tt), 90, 0) * 0
+    #render_poses = render_path_spiral(c2w, up, rads, focal, zdelta, zrate=.5, N=N_views)
+    render_poses = webGLspiralPath(c2w[:,:3],c2w[:,3],near_fars.min(),near_fars.max(), total_frame=N_views)
+    #pdb.set_trace()
     return np.stack(render_poses)
 
 
@@ -189,7 +225,7 @@ class ShinyDataset(Dataset):
         up = normalize(self.poses[:, :3, 1].sum(0))
         rads = np.percentile(np.abs(tt), 90, 0)
 
-        self.render_path = get_spiral(self.poses, self.near_fars, N_views=N_views)
+        self.render_path = get_spiral(self.poses, self.near_fars, rads_scale=0.1, N_views=N_views)
 
         # distances_from_center = np.linalg.norm(self.poses[..., 3], axis=1)
         # val_idx = np.argmin(distances_from_center)  # choose val image as the closest to
