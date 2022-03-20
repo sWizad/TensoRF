@@ -13,6 +13,7 @@ import datetime
 
 from dataLoader import dataset_dict
 import sys
+import pdb
 
 
 
@@ -171,7 +172,6 @@ def reconstruction(args):
                                 N_samples=nSamples, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
         loss = torch.mean((rgb_map - rgb_train) ** 2)
-
 
         # loss
         total_loss = loss
