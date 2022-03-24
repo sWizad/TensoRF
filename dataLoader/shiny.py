@@ -22,7 +22,7 @@ def average_poses(poses):
     using @center_poses. Its computation is as follows:
     1. Compute the center: the average of pose centers.
     2. Compute the z axis: the normalized average z axis.
-    3. Compute axis y': the average y axis.
+    3. Compute axis y': the average y axis.eul
     4. Compute x' = y' cross product z, then normalize it as the x axis.
     5. Compute the y axis: z cross product x.
 
@@ -124,7 +124,11 @@ def webGLspiralPath(ref_rotation, ref_translation, dmin, dmax, total_frame = 120
     dist = (dmin + dmax) / 2.0
     translation_matrix = dcm_to_4x4(np.eye(3), np.array([0,0, -dist]))
     translation_matrix2 = dcm_to_4x4(np.eye(3), np.array([0,0, dist]))
-    euler_3x3 = Rotation.from_euler('yxz', [leftright, updown, 0]).as_dcm()
+    euler_3x3 = Rotation.from_euler('yxz', [leftright, updown, 0])
+    try:
+        euler_3x3 = euler_3x3.as_matrix() #newer version of scipy
+    except:
+        euler_3x3 = euler_3x3.as_dcm() #compatibility to old version
     euler_4x4 = dcm_to_4x4(euler_3x3, np.array([0.0,0.0,0.0]))
     output = translation_matrix2 @ euler_4x4 @  translation_matrix @ cam
     output = output.astype(np.float32)
