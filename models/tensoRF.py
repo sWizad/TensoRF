@@ -1,4 +1,5 @@
 from .tensorBase import *
+import pdb
 
 
 class TensorVM(TensorBase):
@@ -234,6 +235,11 @@ class TensorVMSplit(TensorBase):
             line_coef_point.append(F.grid_sample(self.app_line[idx_plane], coordinate_line[[idx_plane]],
                                             align_corners=True).view(-1, *xyz_sampled.shape[:1]))
         plane_coef_point, line_coef_point = torch.cat(plane_coef_point), torch.cat(line_coef_point)
+        # plane_coef_point (144, 184524)
+        # line_coef_point (144, 184524)
+        # basis_mat (184524, 27)
+        # xyz_sampled (184524, 3)
+        # pdb.set_trace()
 
 
         return self.basis_mat((plane_coef_point * line_coef_point).T)

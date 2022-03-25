@@ -1,7 +1,7 @@
 
 dataset_name = blender
-datadir = data/nerf_synthetic/lego
-expname =  tensorf_lego
+datadir = data/nerf_synthetic/chair
+expname =  tensorf_chair
 basedir = ./log
 add_timestamp = 1
 

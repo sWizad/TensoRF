@@ -1,9 +1,9 @@
 
 dataset_name = shiny
 datadir = data/shiny_for_eval/labjuice
-expname =  lab_ds2
+expname =  test
 basedir = ./log
-add_timestamp = 1
+add_timestamp = 0
 
 downsample_train = 2.0
 ndc_ray = 1
@@ -22,8 +22,8 @@ vis_every = 25000
 render_test = 1
 render_path = 1
 
-n_lamb_sigma = [16,4,4]
-n_lamb_sh = [48,12,12]
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
 
 shadingMode = MLP_Fea
 fea2denseAct = relu
