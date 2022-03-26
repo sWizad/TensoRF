@@ -2,4 +2,7 @@ __pycache__/
 
 data
 log
+configs2/
 configs_test
+
+run_batch.py

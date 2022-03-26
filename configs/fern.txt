@@ -1,7 +1,7 @@
 
 dataset_name = llff
-datadir = ./data/nerf_llff_data/flower
-expname =  tensorf_flower
+datadir = data/nerf_llff_data/fern
+expname =  tensorf_fern
 basedir = ./log
 
 downsample_train = 2.0

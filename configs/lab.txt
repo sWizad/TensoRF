@@ -1,22 +1,23 @@
 
 dataset_name = shiny
 datadir = data/shiny_for_eval/labjuice
-expname =  tensorf_lab_ds2
+expname =  lab_long
 basedir = ./log
+add_timestamp = 1
 
 downsample_train = 2.0
 ndc_ray = 1
 
-n_iters = 25000
+n_iters = 250000
 batch_size = 4096
 
 N_voxel_init = 2097156 # 128**3
-N_voxel_final = 262144000 # 640**3
-upsamp_list = [2000,3000,4000,5500]
-update_AlphaMask_list = [2500]
+N_voxel_final = 421875000 #262144000 # 640**3
+upsamp_list = [2000,3000,4000,5000,7000]
+update_AlphaMask_list = [2000,4000]
 
 N_vis = 5
-vis_every = 10000
+vis_every = 50000
 
 render_test = 1
 render_path = 1

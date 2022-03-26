@@ -143,17 +143,17 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
     c2w = average_poses(c2ws_all)
 
     # Get average pose
-    up = normalize(c2ws_all[:, :3, 1].sum(0))
+    #up = normalize(c2ws_all[:, :3, 1].sum(0))
 
     # Find a reasonable "focus depth" for this dataset
-    dt = 0.75
-    close_depth, inf_depth = near_fars.min() * 0.9, near_fars.max() * 5.0
-    focal = 1.0 / (((1.0 - dt) / close_depth + dt / inf_depth))
+    #dt = 0.75
+    #close_depth, inf_depth = near_fars.min() * 0.9, near_fars.max() * 5.0
+    #focal = 1.0 / (((1.0 - dt) / close_depth + dt / inf_depth))
 
     # Get radii for spiral path
-    zdelta = near_fars.min() * .2
-    tt = c2ws_all[:, :3, 3]
-    rads = np.percentile(np.abs(tt), 90, 0) * 0
+    #zdelta = near_fars.min() * .2
+    #tt = c2ws_all[:, :3, 3]
+    #rads = np.percentile(np.abs(tt), 90, 0) * 0
     #render_poses = render_path_spiral(c2w, up, rads, focal, zdelta, zrate=.5, N=N_views)
     render_poses = webGLspiralPath(c2w[:,:3],c2w[:,3],near_fars.min(),near_fars.max(), total_frame=N_views)
     #pdb.set_trace()

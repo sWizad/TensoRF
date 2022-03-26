@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from .sh import eval_sh_bases
 import numpy as np
 import time
+import pdb
 
 
 def positional_encoding(positions, freqs):
@@ -431,6 +432,7 @@ class TensorBase(torch.nn.Module):
 
             validsigma = self.feature2density(sigma_feature)
             sigma[ray_valid] = validsigma
+        #pdb.set_trace()
 
 
         alpha, weight, bg_weight = raw2alpha(sigma, dists * self.distance_scale)

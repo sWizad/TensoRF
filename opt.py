@@ -19,7 +19,12 @@ def config_parser(cmd=None):
     parser.add_argument('--downsample_train', type=float, default=1.0)
     parser.add_argument('--downsample_test', type=float, default=1.0)
 
+<<<<<<< HEAD
     parser.add_argument('--model_name', type=str, default='TensorVMSplit')
+=======
+    parser.add_argument('--model_name', type=str, default='TensorVMSplit',
+                        choices=['TensorF5D','TensorVMSplit', 'TensorCP'])
+>>>>>>> 5a6a1898a99ebce9d3c6db8f67061270ece6e81e
 
     # loader options
     parser.add_argument("--batch_size", type=int, default=4096)
