@@ -2,8 +2,7 @@ __pycache__/
 
 data
 log
-<<<<<<< HEAD
 configs2/
-=======
 configs_test
->>>>>>> 6fed13be3faab296634979101a4f298ac865234e
+
+run_batch.py

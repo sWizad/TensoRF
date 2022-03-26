@@ -2,6 +2,7 @@ import torch,os,imageio,sys
 from tqdm.auto import tqdm
 from dataLoader.ray_utils import get_rays
 from models.tensoRF import TensorVM, TensorCP, raw2alpha, TensorVMSplit, AlphaGridMask
+from models.tensor5D import TensorF5D
 from utils import *
 from dataLoader.ray_utils import ndc_rays_blender
 
@@ -92,7 +93,7 @@ def evaluation_path(test_dataset,tensorf, c2ws, renderer, savePath=None, N_vis=5
     PSNRs, rgb_maps, depth_maps = [], [], []
     ssims,l_alex,l_vgg=[],[],[]
     os.makedirs(savePath, exist_ok=True)
-    os.makedirs(savePath+"/rgbd", exist_ok=True)
+    os.makedirs(savePath+"/img/rgbd", exist_ok=True)
 
     try:
         tqdm._instances.clear()
@@ -123,9 +124,9 @@ def evaluation_path(test_dataset,tensorf, c2ws, renderer, savePath=None, N_vis=5
         rgb_maps.append(rgb_map)
         depth_maps.append(depth_map)
         if savePath is not None:
-            imageio.imwrite(f'{savePath}/{prtx}{idx:03d}.png', rgb_map)
+            imageio.imwrite(f'{savePath}/img/{prtx}{idx:03d}.png', rgb_map)
             rgb_map = np.concatenate((rgb_map, depth_map), axis=1)
-            imageio.imwrite(f'{savePath}/rgbd/{prtx}{idx:03d}.png', rgb_map)
+            imageio.imwrite(f'{savePath}/img/rgbd/{prtx}{idx:03d}.png', rgb_map)
 
     imageio.mimwrite(f'{savePath}/{prtx}video.mp4', np.stack(rgb_maps), fps=30, quality=8)
     imageio.mimwrite(f'{savePath}/{prtx}depthvideo.mp4', np.stack(depth_maps), fps=30, quality=8)

@@ -1,9 +1,8 @@
 
-dataset_name = shiny
-datadir = data/shiny_for_eval/labjuice
-expname =  test
+dataset_name = llff
+datadir = data/nerf_llff_data/fern
+expname =  tensorf_fern
 basedir = ./log
-add_timestamp = 0
 
 downsample_train = 2.0
 ndc_ray = 1
@@ -13,17 +12,17 @@ batch_size = 4096
 
 N_voxel_init = 2097156 # 128**3
 N_voxel_final = 262144000 # 640**3
-upsamp_list = [2000,3000,4000,5000,7000]
-update_AlphaMask_list = [2000,4000]
+upsamp_list = [2000,3000,4000,5500]
+update_AlphaMask_list = [2500]
 
 N_vis = 5
-vis_every = 25000
+vis_every = 10000
 
 render_test = 1
 render_path = 1
 
-n_lamb_sigma = [16,16,16]
-n_lamb_sh = [48,48,48]
+n_lamb_sigma = [16,4,4]
+n_lamb_sh = [48,12,12]
 
 shadingMode = MLP_Fea
 fea2denseAct = relu
