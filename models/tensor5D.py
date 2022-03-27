@@ -5,7 +5,7 @@ import pdb
 class TensorF5D(TensorVMSplit):
     def __init__(self, aabb, gridSize, device, **kargs):
         super(TensorF5D, self).__init__(aabb, gridSize, device, **kargs)
-        print('--------------------Hey----------------------')
+        print('--------------------5D TENSOR----------------------')
 
     def init_svd_volume(self, res, device):
         self.density_plane, self.density_line = self.init_one_svd(self.density_n_comp, self.gridSize, 0.1, device)

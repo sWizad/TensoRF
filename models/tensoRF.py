@@ -1,5 +1,6 @@
 from .tensorBase import *
 import pdb
+from utils import printlog
 
 
 class TensorVM(TensorBase):
@@ -267,7 +268,7 @@ class TensorVMSplit(TensorBase):
         self.density_plane, self.density_line = self.up_sampling_VM(self.density_plane, self.density_line, res_target)
 
         self.update_stepSize(res_target)
-        print(f'upsamping to {res_target}')
+        printlog(f'upsamping to {res_target}')
 
     @torch.no_grad()
     def shrink(self, new_aabb):
