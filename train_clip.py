@@ -132,9 +132,7 @@ def reconstruction(args):
         tensorf = eval(args.model_name)(aabb, reso_cur, device,
                     density_n_comp=n_lamb_sigma, appearance_n_comp=n_lamb_sh, app_dim=args.data_dim_color, near_far=near_far,
                     shadingMode=args.shadingMode, alphaMask_thres=args.alpha_mask_thre, density_shift=args.density_shift, distance_scale=args.distance_scale,
-                    pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct,
-                    grid_level=args.grid_level, grid_feature_per_level=args.grid_feature_per_level, grid_hash_log2=args.grid_hash_log2, grid_base_resolution=args.grid_base_resolution, grid_level_scale=args.grid_level_scale
-                )
+                    pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct)
 
 
     grad_vars = tensorf.get_optparam_groups(args.lr_init, args.lr_basis)
@@ -242,7 +240,7 @@ def reconstruction(args):
 
         if iteration in update_AlphaMask_list:
 
-            if True or reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
+            if reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
                 reso_mask = reso_cur
             new_aabb = tensorf.updateAlphaMask(tuple(reso_mask))
             if iteration == update_AlphaMask_list[0]:
@@ -262,8 +260,6 @@ def reconstruction(args):
             n_voxels = N_voxel_list.pop(0)
             reso_cur = N_to_reso(n_voxels, tensorf.aabb)
             nSamples = min(args.nSamples, cal_n_samples(reso_cur,args.step_ratio))
-            print("Resolution ====== > ")
-            print(reso_cur)
             tensorf.upsample_volume_grid(reso_cur)
             torch.cuda.empty_cache()
 
