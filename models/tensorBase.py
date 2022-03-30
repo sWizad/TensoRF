@@ -432,7 +432,6 @@ class TensorBase(torch.nn.Module):
 
             validsigma = self.feature2density(sigma_feature)
             sigma[ray_valid] = validsigma
-        #pdb.set_trace()
 
 
         alpha, weight, bg_weight = raw2alpha(sigma, dists * self.distance_scale)

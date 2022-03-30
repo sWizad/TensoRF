@@ -12,18 +12,72 @@ import json, random
 from renderer import *
 from utils import *
 from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
 import datetime
 
 from dataLoader import dataset_dict
-import sys
+from dataLoader.ray_utils import get_rays, ndc_rays_blender
+import sys, imageio
 import pdb
-
+import clip
+from torchvision import transforms
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 renderer = OctreeRender_trilinear_fast
 
+import numpy as np
+from scipy.spatial.transform import Rotation
+import torch
+
+
+def slerp(p0, p1, t):
+    # https://stackoverflow.com/questions/2879441/how-to-interpolate-rotations
+    omega = np.arccos(np.dot(p0/np.linalg.norm(p0), p1/np.linalg.norm(p1)))
+    so = np.sin(omega)
+    return np.sin((1.0-t)*omega) / so * p0 + np.sin(t*omega)/so * p1
+
+
+def _interp(pose1, pose2, s):
+    """Interpolate between poses as camera-to-world transformation matrices"""
+    assert pose1.shape == (3, 4)
+    assert pose2.shape == (3, 4)
+
+    # Camera translation 
+    C = (1 - s) * pose1[:, -1] + s * pose2[:, -1]
+    assert C.shape == (3,)
+
+    # Rotation from camera frame to world frame
+    R1 = Rotation.from_matrix(pose1[:, :3])
+    R2 = Rotation.from_matrix(pose2[:, :3])
+    R = slerp(R1.as_quat(), R2.as_quat(), s)
+    R = Rotation.from_quat(R)
+    R = R.as_matrix()
+    assert R.shape == (3, 3)
+    transform = np.concatenate([R, C[:, None]], axis=-1)
+    return transform
+    #return torch.tensor(transform, dtype=pose1.dtype)
+
+def interp(pose1, pose2, s):
+    """Interpolate between poses as camera-to-world transformation matrices"""
+    assert pose1.shape == (3, 4)
+    assert pose2.shape == (3, 4)
+
+    # Camera translation 
+    C = (1 - s) * pose1[:, -1] + s * pose2[:, -1]
+    assert C.shape == (3,)
+
+    # Rotation from camera frame to world frame
+    R1 = pose1[:, :3]
+    R2 = pose2[:, :3]
+    R = (1 - s) * R1 + s * R2
+    assert R.shape == (3, 3)
+    transform = np.concatenate([R, C[:, None]], axis=-1)
+    return transform
+
+def interp3(pose1, pose2, pose3, s12, s3):
+    return interp(interp(pose1, pose2, s12), pose3, s3)
 
 class SimpleSampler:
     def __init__(self, total, batch):
@@ -76,6 +130,31 @@ def render_test(args):
         os.makedirs(f'{logfolder}/{args.expname}/imgs_path_all', exist_ok=True)
         evaluation_path(test_dataset,tensorf, c2ws, renderer, f'{logfolder}/{args.expname}/imgs_path_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+
+def get_embed_fn(model_type=None, device='cpu'):
+    encoder = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to(device)
+    normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
+                                    std=[0.26862954, 0.26130258, 0.27577711])
+    embed = lambda ims: encoder.encode_image(normalize(ims)).unsqueeze(1)
+    return embed
+
+@torch.no_grad()
+def precompute_embed(test_dataset,embed):
+    N_vis = -1
+    img_eval_interval = 1 if N_vis < 0 else test_dataset.all_rays.shape[0] // N_vis
+    idxs = list(range(0, test_dataset.all_rays.shape[0], img_eval_interval))
+    W, H = test_dataset.img_wh
+    gt_rgb = test_dataset.all_rgbs.view(-1, H, W, 3)
+    gt_rgb = torch.permute(gt_rgb,(0,3,1,2))
+    targets_resize= F.interpolate(gt_rgb, (224, 224), mode='bilinear').cuda()
+    emb = embed(targets_resize)
+    return emb
+
+def mem():
+    t = torch.cuda.get_device_properties(0).total_memory
+    r = torch.cuda.memory_reserved(0)
+    a = torch.cuda.memory_allocated(0)
+    print("reserve:",r//1000000,"Mib, total:",t//1000000,"Mib, free:",(t-r)//1000000,"Mib")
 
 def reconstruction(args):
 
@@ -134,6 +213,9 @@ def reconstruction(args):
                     shadingMode=args.shadingMode, alphaMask_thres=args.alpha_mask_thre, density_shift=args.density_shift, distance_scale=args.distance_scale,
                     pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct)
 
+    embed = get_embed_fn(device=device)
+    target_emb = precompute_embed(train_dataset,embed)
+    i_train_poses = np.array([i for i in np.arange(int(target_emb.shape[0]))])
 
     grad_vars = tensorf.get_optparam_groups(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
@@ -167,11 +249,10 @@ def reconstruction(args):
     TV_weight_density, TV_weight_app = args.TV_weight_density, args.TV_weight_app
     tvreg = TVLoss()
     printlog(f"initial TV_weight density: {TV_weight_density} appearance: {TV_weight_app}")
-
+    W, H = train_dataset.img_wh
 
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout)
     for iteration in pbar:
-        #if iteration %50 > 5 and iteration %50 < 48 : continue
 
         ray_idx = trainingSampler.nextids()
         rays_train, rgb_train = allrays[ray_idx], allrgbs[ray_idx].to(device)
@@ -184,6 +265,32 @@ def reconstruction(args):
 
         # loss
         total_loss = loss
+        if iteration % 101 == 0 and iteration>5:
+            torch.cuda.empty_cache()
+            if True:
+                assert len(i_train_poses) >= 3
+                poses_i = np.random.choice(i_train_poses, size=3, replace=False)
+                pose1, pose2, pose3 = train_dataset.poses[poses_i, :3, :4]
+                s12, s3 = np.random.uniform(0,1, size=2)
+                pose = interp3(pose1, pose2, pose3, s12, s3)
+                #pose = interp(pose1, pose2, s12)
+                #pose = pose1
+            dH, dW = (H // 224 + 2), (W // 224 + 2)
+            #dH, dW = (H // 224 + 1), (W // 224 + 1)
+            nH, nW = H // dH, W // dW
+            rays_o, rays_d = get_rays(train_dataset.directions[::dH,::dW], torch.FloatTensor(pose)) 
+            rays_o, rays_d = ndc_rays_blender(H, W, train_dataset.focal[0], 1.0, rays_o, rays_d)
+            rays = torch.cat([rays_o, rays_d], 1)
+            #pdb.set_trace()
+            rgb_map, _, _, _, _ = renderer(rays, tensorf, chunk=4096, N_samples=-1, ndc_ray=ndc_ray, white_bg = white_bg, device=device)
+            rgb_map = rgb_map.reshape(nH, nW, 3)
+
+            rgb_map = F.interpolate(rgb_map[None], (224, 224), mode='bilinear')
+            emb = embed(rgb_map)
+
+            rgb_map = (rgb_map.cpu().detach().numpy() * 255).astype('uint8')
+            imageio.imwrite(f'out.png', rgb_map)
+            
         if iteration % args.TV_every==0:
             if Ortho_reg_weight > 0:
                 loss_reg = tensorf.vector_comp_diffs()

@@ -228,6 +228,7 @@ def reconstruction(args):
                 + f' mse = {loss:.6f}'
             )
             PSNRs = []
+            
 
 
         if iteration % args.vis_every == args.vis_every - 1:
