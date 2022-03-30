@@ -128,6 +128,14 @@ def config_parser(cmd=None):
                         help='N images to vis')
     parser.add_argument("--vis_every", type=int, default=10000,
                         help='frequency of visualize the image')
+
+    # hashgrid configuration
+    parser.add_argument('--grid_level', type=int, default=16)
+    parser.add_argument('--grid_feature_per_level', type=int, default = 2)
+    parser.add_argument('--grid_hash_log2', type=float, default=19)
+    parser.add_argument('--grid_base_resolution', type=float, default = 16)
+    parser.add_argument('--grid_level_scale', type=float, default = 2)
+
     if cmd is not None:
         return parser.parse_args(cmd)
     else:
