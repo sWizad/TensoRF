@@ -1,0 +1,4 @@
+configargparse
+kornia
+imageio-ffmpeg
+lpips
