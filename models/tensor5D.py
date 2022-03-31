@@ -47,6 +47,13 @@ class TensorF5D(TensorVMSplit):
             grad_vars += [{'params':self.renderModule.parameters(), 'lr':lr_init_network}]
         return grad_vars
 
+    def TV_loss_app(self, reg):
+        total = 0
+        for idx in range(len(self.app_plane)):
+            total = total + reg(self.app_plane[idx]) * 1e-2 + reg(self.app_line[idx]) * 1e-3
+            #total = total + reg(self.view_line0[idx]) * 1e-2 + reg(self.view_line1[idx]) * 1e-2
+        return total
+
     def compute_appfeature(self, xyz_sampled, viewdirs):
         # plane + line basis
         coordinate_plane = torch.stack((xyz_sampled[..., self.matMode[0]], xyz_sampled[..., self.matMode[1]], xyz_sampled[..., self.matMode[2]])).detach().view(3, -1, 1, 2)
@@ -64,15 +71,15 @@ class TensorF5D(TensorVMSplit):
                                                 align_corners=True).view(-1, *xyz_sampled.shape[:1]))
             line_coef_point.append(F.grid_sample(self.app_line[idx_plane], coordinate_line[[idx_plane]],
                                             align_corners=True).view(-1, *xyz_sampled.shape[:1]))
-            view_coef_point0.append(F.grid_sample(self.view_line0[idx_plane], view_line[[0]],
-                                            align_corners=True).view(-1, *xyz_sampled.shape[:1]))
-            view_coef_point1.append(F.grid_sample(self.view_line1[idx_plane], view_line[[1]],
-                                            align_corners=True).view(-1, *xyz_sampled.shape[:1]))
+            #view_coef_point0.append(F.grid_sample(self.view_line0[idx_plane], view_line[[0]],
+            #                                align_corners=True).view(-1, *xyz_sampled.shape[:1]))
+            #view_coef_point1.append(F.grid_sample(self.view_line1[idx_plane], view_line[[1]],
+            #                                align_corners=True).view(-1, *xyz_sampled.shape[:1]))
                                             
         plane_coef_point, line_coef_point = torch.cat(plane_coef_point), torch.cat(line_coef_point)
-        view_coef_point0, view_coef_point1 = torch.cat(view_coef_point0), torch.cat(view_coef_point1)
+        #view_coef_point0, view_coef_point1 = torch.cat(view_coef_point0), torch.cat(view_coef_point1)
 
-        return self.basis_mat((plane_coef_point * line_coef_point * view_coef_point0 * view_coef_point1).T)
+        return self.basis_mat((plane_coef_point * line_coef_point).T)# * view_coef_point0 * view_coef_point1).T)
 
     def forward(self, rays_chunk, white_bg=True, is_train=False, ndc_ray=False, N_samples=-1):
 
@@ -109,7 +116,6 @@ class TensorF5D(TensorVMSplit):
 
             validsigma = self.feature2density(sigma_feature)
             sigma[ray_valid] = validsigma
-        #
 
 
         alpha, weight, bg_weight = raw2alpha(sigma, dists * self.distance_scale)
