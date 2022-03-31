@@ -249,7 +249,7 @@ def reconstruction(args):
 
         if iteration in update_AlphaMask_list:
 
-            if True or reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
+            if reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
                 reso_mask = reso_cur
             new_aabb = tensorf.updateAlphaMask(tuple(reso_mask))
             if iteration == update_AlphaMask_list[0]:
