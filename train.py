@@ -12,6 +12,7 @@ import json, random
 from renderer import *
 from utils import *
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
 import datetime
 
 from dataLoader import dataset_dict
@@ -170,46 +171,51 @@ def reconstruction(args):
     tvreg = TVLoss()
     printlog(f"initial TV_weight density: {TV_weight_density} appearance: {TV_weight_app}")
 
-
+    scaler = GradScaler()
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout)
     for iteration in pbar:
-        #if iteration %50 > 5 and iteration %50 < 48 : continue
+        with autocast(enabled=False):
+            #if iteration %50 > 5 and iteration %50 < 48 : continue
 
-        ray_idx = trainingSampler.nextids()
-        rays_train, rgb_train = allrays[ray_idx], allrgbs[ray_idx].to(device)
+            ray_idx = trainingSampler.nextids()
+            rays_train, rgb_train = allrays[ray_idx], allrgbs[ray_idx].to(device)
 
-        #rgb_map, alphas_map, depth_map, weights, uncertainty
-        rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(rays_train, tensorf, chunk=args.batch_size,
-                                N_samples=nSamples, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
+            #rgb_map, alphas_map, depth_map, weights, uncertainty
+            rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(rays_train, tensorf, chunk=args.batch_size,
+                                    N_samples=nSamples, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
-        loss = torch.mean((rgb_map - rgb_train) ** 2)
+            loss = torch.mean((rgb_map - rgb_train) ** 2)
 
-        # loss
-        total_loss = loss
-        if iteration % args.TV_every==0:
-            if Ortho_reg_weight > 0:
-                loss_reg = tensorf.vector_comp_diffs()
-                total_loss += Ortho_reg_weight*loss_reg
-                summary_writer.add_scalar('train/reg', loss_reg.detach().item(), global_step=iteration)
-            if L1_reg_weight > 0:
-                loss_reg_L1 = tensorf.density_L1()
-                total_loss += L1_reg_weight*loss_reg_L1
-                summary_writer.add_scalar('train/reg_l1', loss_reg_L1.detach().item(), global_step=iteration)
+            # loss
+            total_loss = loss
+            if iteration % args.TV_every==0:
+                if Ortho_reg_weight > 0:
+                    loss_reg = tensorf.vector_comp_diffs()
+                    total_loss += Ortho_reg_weight*loss_reg
+                    summary_writer.add_scalar('train/reg', loss_reg.detach().item(), global_step=iteration)
+                if L1_reg_weight > 0:
+                    loss_reg_L1 = tensorf.density_L1()
+                    total_loss += L1_reg_weight*loss_reg_L1
+                    summary_writer.add_scalar('train/reg_l1', loss_reg_L1.detach().item(), global_step=iteration)
 
-            if TV_weight_density>0:
-                TV_weight_density *= lr_factor
-                loss_tv = tensorf.TV_loss_density(tvreg) * TV_weight_density
-                total_loss = total_loss + loss_tv
-                summary_writer.add_scalar('train/reg_tv_density', loss_tv.detach().item(), global_step=iteration)
-            if TV_weight_app>0:
-                TV_weight_app *= lr_factor
-                loss_tv = loss_tv + tensorf.TV_loss_app(tvreg)*TV_weight_app
-                total_loss = total_loss + loss_tv
-                summary_writer.add_scalar('train/reg_tv_app', loss_tv.detach().item(), global_step=iteration)
-
-        optimizer.zero_grad()
-        total_loss.backward()
-        optimizer.step()
+                if TV_weight_density>0:
+                    TV_weight_density *= lr_factor
+                    loss_tv = tensorf.TV_loss_density(tvreg) * TV_weight_density
+                    total_loss = total_loss + loss_tv
+                    summary_writer.add_scalar('train/reg_tv_density', loss_tv.detach().item(), global_step=iteration)
+                if TV_weight_app>0:
+                    TV_weight_app *= lr_factor
+                    loss_tv = loss_tv + tensorf.TV_loss_app(tvreg)*TV_weight_app
+                    total_loss = total_loss + loss_tv
+                    summary_writer.add_scalar('train/reg_tv_app', loss_tv.detach().item(), global_step=iteration)
+        if args.grad_scaler:
+            scaler.scale(total_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.zero_grad()
+            total_loss.backward()
+            optimizer.step()
 
         loss = loss.detach().item()
         
@@ -262,7 +268,7 @@ def reconstruction(args):
 
         if iteration in update_AlphaMask_list:
 
-            if True or reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
+            if reso_cur[0] * reso_cur[1] * reso_cur[2]<256**3:# update volume resolution
                 reso_mask = reso_cur
             new_aabb = tensorf.updateAlphaMask(tuple(reso_mask))
             if iteration == update_AlphaMask_list[0]:

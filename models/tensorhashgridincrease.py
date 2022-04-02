@@ -8,9 +8,11 @@ import tinycudann as tcnn
 from .tensoRF import TensorVMSplit, raw2alpha
 import numpy as np
 
-class TensorHashGrid(TensorVMSplit):
+HASHGRID_N_LEVELS = 16
+
+class TensorHashGridIncrease(TensorVMSplit):
     def __init__(self, *args, **kwargs):
-        print("Model: TensorHashGrid ")
+        print("Model: TensorHashGridInc - Increase the hash size a long table ")
         self.grid_level = kwargs['grid_level']
         self.grid_feature_per_level = kwargs['grid_feature_per_level']
         self.grid_hash_log2 = kwargs['grid_hash_log2']
@@ -23,25 +25,34 @@ class TensorHashGrid(TensorVMSplit):
 
     def init_svd_volume(self, res, device):
         # define network component
-        encoders = []        
+        encoders = []
         num_density = np.sum(np.array(self.density_n_comp))
         num_apperance = np.sum(np.array(self.app_n_comp))
-        for i in range(num_density + num_apperance):
+        for i in range(6):
+            num_features = self.density_n_comp[i] if i < 3 else self.app_n_comp[i-3]
+            num_features = int(np.ceil(num_features / HASHGRID_N_LEVELS))
+            if num_features > 2 and num_features < 4:
+                num_features = 4
+            if num_features > 4 and num_features < 8:
+                num_features = 8
+            if num_features > 8:
+                raise Exception("Not support this height feature")
             encoder = tcnn.Encoding(
-                    n_input_dims=2,
-                    encoding_config={
-                        "otype": "DenseGrid",
-                        "n_features_per_level": 1,
-                        "n_levels": 1,
-                        "base_resolution": 300, #grid_resolution
-                        "per_level_scale": 1,
-                    },
+                        n_input_dims=2,
+                        encoding_config={
+                            "otype": "HashGrid",
+                            "n_features_per_level": num_features,
+                            "n_levels": HASHGRID_N_LEVELS,
+                            "log2_hashmap_size": 17,
+                            "base_resolution": 16,
+                            "per_level_scale": 2,
+                        },
             ).to(device)
             encoders.append(encoder)
             
 
-        self.density_encoders = torch.nn.ModuleList(encoders[:num_density])
-        self.apperance_encoders = torch.nn.ModuleList(encoders[num_density:])
+        self.density_encoders = torch.nn.ModuleList(encoders[:3])
+        self.apperance_encoders = torch.nn.ModuleList(encoders[3:])
         self.basis_mat = torch.nn.Linear(num_apperance, self.app_dim, bias=False, device=device)
 
     def get_optparam_groups(self, lr_init = 0.01, lr_basis = 0.001):
@@ -65,15 +76,11 @@ class TensorHashGrid(TensorVMSplit):
         """
         xyz_sampled = (xyz_sampled + 1.0) / 2.0 #scale to [0,1]
         sigma_feature = torch.zeros((xyz_sampled.shape[0],), device=xyz_sampled.device)
-        shift_density = 0
         for i in range(3):
             coordinate_plane = xyz_sampled[..., self.matMode[i]]
-            for j in range(self.density_n_comp[i]):
-                idx = shift_density + j
-                plane_coef_point = self.density_encoders[idx](coordinate_plane)
-                plane_coef_point = plane_coef_point.type(xyz_sampled.dtype)
-                sigma_feature = sigma_feature + torch.sum(plane_coef_point, dim=-1)
-            shift_density += self.density_n_comp[i]
+            plane_coef_point = self.density_encoders[i](coordinate_plane)
+            plane_coef_point = plane_coef_point.type(xyz_sampled.dtype)
+            sigma_feature = sigma_feature + torch.sum(plane_coef_point[..., :self.density_n_comp[i]], dim=-1)
         return sigma_feature.type(xyz_sampled.dtype)
 
     def compute_appfeature(self, xyz_sampled):
@@ -81,10 +88,9 @@ class TensorHashGrid(TensorVMSplit):
         shift_density = 0
         for i in range(3):
             coordinate_plane = xyz_sampled[..., self.matMode[i]]
-            for j in range(self.app_n_comp[i]):
-                plane_coef_point = self.apperance_encoders[i](coordinate_plane)
-                plane_coef_point = plane_coef_point.type(xyz_sampled.dtype)
-                features.append(plane_coef_point)  
+            plane_coef_point = self.apperance_encoders[i](coordinate_plane)
+            plane_coef_point = plane_coef_point.type(xyz_sampled.dtype)
+            features.append(plane_coef_point[..., :self.app_n_comp[i]])  
         features = torch.cat(features,dim=-1)
         app_features = self.basis_mat(features)        
         return app_features

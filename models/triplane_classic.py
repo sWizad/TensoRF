@@ -1,7 +1,4 @@
-# most closet hashgrid implementation
-# design for 
-# 1. Confirm that hashgrid produce a good result
-# 2. Find the right 
+# a reimplementation of triplane
 
 import torch
 import torch.nn.functional as F
@@ -10,12 +7,12 @@ import tinycudann as tcnn
 from .tensoRF import TensorVMSplit, raw2alpha
 import numpy as np
 
-class HashGrid3D(TensorVMSplit):
+class TriPlaneClassic(TensorVMSplit):
     """
     a drop-in replacement for for VM decompositon where we factor into hashgrid instead
     """
     def __init__(self, *args, **kwargs):
-        print("Model: HashGrid3D - a model that try to implement (partial of) instant-ngp to verify bug ")
+        print("Model: Triplane (Classic) ")
         super(TensorVMSplit, self).__init__(*args, **kwargs)
     
     def init_svd_volume(self, res, device):
@@ -35,19 +32,24 @@ class HashGrid3D(TensorVMSplit):
         self.geo_feat_dim = geo_feat_dim
 
         # define network component
-        self.encoder = tcnn.Encoding(
-            n_input_dims=3,
-            encoding_config={
-                "otype": "HashGrid",
-                "n_levels": 16,
-                "n_features_per_level": 2,
-                "log2_hashmap_size": log2_hashmap_size,
-                "base_resolution": 16,
-                "per_level_scale": per_level_scale,
-            },
-        ).to(device)
+        encoders = []
+        for i in range(3):
+            encoders.append(
+                tcnn.Encoding(
+                    n_input_dims=2,
+                    encoding_config={
+                        "otype": "HashGrid",
+                        "n_levels": 16,
+                        "n_features_per_level": 2,
+                        "log2_hashmap_size": log2_hashmap_size,
+                        "base_resolution": 16,
+                        "per_level_scale": per_level_scale,
+                    },
+                ).to(device)
+            )
+        self.encoder = torch.nn.ModuleList(encoders)
         self.sigma_net = tcnn.Network(
-            n_input_dims=32,
+            n_input_dims= 32 * 3,
             n_output_dims=1 + self.geo_feat_dim,
             network_config={
                 "otype": "FullyFusedMLP",
@@ -119,9 +121,12 @@ class HashGrid3D(TensorVMSplit):
         @return sigma_feature #[num_ray]
         """
         xyz_sampled = (xyz_sampled + 1.0) / 2.0 #scale to [0,1]
-
-        grid_feature = self.encoder(xyz_sampled)
-        sigma_feature = self.sigma_net(grid_feature)
+        features = []
+        for i in range(3):
+            coordinate_plane = xyz_sampled[..., self.matMode[i]]
+            features.append(self.encoder[i](coordinate_plane))
+        features = torch.cat(features,dim=-1)
+        sigma_feature = self.sigma_net(features)
         return sigma_feature.type(xyz_sampled.dtype)
 
     def compute_appfeature(self, xyz_sampled, density_features, viewdirs):

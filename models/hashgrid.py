@@ -1,5 +1,7 @@
 # hashgrid based model
 import torch
+import torch.nn.functional as F
+
 import tinycudann as tcnn
 
 from .tensoRF import TensorVMSplit

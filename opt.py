@@ -135,6 +135,9 @@ def config_parser(cmd=None):
     parser.add_argument('--grid_hash_log2', type=float, default=19)
     parser.add_argument('--grid_base_resolution', type=float, default = 16)
     parser.add_argument('--grid_level_scale', type=float, default = 2)
+    parser.add_argument('--grad_scaler', type=bool, default = False)
+    parser.add_argument('--network_autocast', type=bool, default = False)
+
 
     if cmd is not None:
         return parser.parse_args(cmd)
