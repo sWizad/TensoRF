@@ -217,6 +217,25 @@ def reconstruction(args):
         summary_writer.add_scalar('train/PSNR', PSNRs[-1], global_step=iteration)
         summary_writer.add_scalar('train/mse', loss, global_step=iteration)
 
+        
+        if True and (iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000):
+            torch.cuda.empty_cache()
+            #pdb.set_trace()
+            W, H = test_dataset.img_wh
+            with torch.no_grad():
+                rays = test_dataset.all_rays[0]
+                #pdb.set_trace()
+                rgb_map, _, _, _, _ = renderer(rays, tensorf, chunk=4096, N_samples=-1, ndc_ray=ndc_ray, white_bg = white_bg, device=device)
+                rgb_map = rgb_map.reshape(H, W, 3)
+
+                rgb_map = (rgb_map.cpu().detach().numpy() * 255).astype('uint8')
+                imageio.imwrite(f'script/snap.png', rgb_map)
+                tensor = (tensorf.density_plane[0].cpu().detach().numpy() * 255).astype('uint8')
+                imageio.imwrite(f'script/tensor.png', tensor[0,:3].transpose(1,2,0))
+
+            #pdb.set_trace()
+            
+        
 
         for param_group in optimizer.param_groups:
             param_group['lr'] = param_group['lr'] * lr_factor

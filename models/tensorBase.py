@@ -141,7 +141,7 @@ class TensorBase(torch.nn.Module):
                     shadingMode = 'MLP_PE', alphaMask = None, near_far=[2.0,6.0],
                     density_shift = -10, alphaMask_thres=0.08, distance_scale=25, rayMarch_weight_thres=0.0001,
                     pos_pe = 6, view_pe = 6, fea_pe = 6, featureC=128, step_ratio=2.0,
-                    fea2denseAct = 'softplus'):
+                    fea2denseAct = 'softplus', **kargs):
         super(TensorBase, self).__init__()
 
         self.density_n_comp = density_n_comp
@@ -414,6 +414,10 @@ class TensorBase(torch.nn.Module):
             xyz_sampled, z_vals, ray_valid = self.sample_ray(rays_chunk[:, :3], viewdirs, is_train=is_train,N_samples=N_samples)
             dists = torch.cat((z_vals[:, 1:] - z_vals[:, :-1], torch.zeros_like(z_vals[:, :1])), dim=-1)
         viewdirs = viewdirs.view(-1, 1, 3).expand(xyz_sampled.shape)
+        #np_xyz = xyz_sampled.cpu().detach().numpy()
+        #print(np.max(np_xyz,(0,1)))
+        #print(np.min(np_xyz,(0,1)))
+        #pdb.set_trace()
         
         if self.alphaMask is not None:
             alphas = self.alphaMask.sample_alpha(xyz_sampled[ray_valid])

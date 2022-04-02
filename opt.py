@@ -26,7 +26,7 @@ def config_parser(cmd=None):
     parser.add_argument("--n_iters", type=int, default=30000)
 
     parser.add_argument('--dataset_name', type=str, default='blender',
-                        choices=['shiny','blender', 'llff', 'nsvf', 'dtu','tankstemple'])
+                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple'])
 
 
     # training options

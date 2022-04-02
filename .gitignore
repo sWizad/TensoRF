@@ -4,5 +4,6 @@ data
 log
 configs2/
 configs_test
+script/
 
 run_batch.py

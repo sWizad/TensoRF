@@ -4,5 +4,9 @@ pip install scipy
 pip install ruamel.yaml
 pip install git+https://github.com/openai/CLIP.git
 
+pip3 install PyQt5
+pip install kornia
 
-CUDA_VISIBLE_DEVICES=1 python train.py --config configs/lab.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/tensorf_lab_ds2/tensorf_lab_ds2.th  
+
+CUDA_VISIBLE_DEVICES=1 python train.py --config configs/lab.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/tensorf_lab_ds2/tensorf_lab_ds2.th 
+CUDA_VISIBLE_DEVICES=0 python train.py --config configs2/welder.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/welder/welder.th  
