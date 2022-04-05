@@ -203,13 +203,13 @@ def get_rays(directions, c2w):
     return rays_o
 
 class DeepvvDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)
         val_num: number of val images (used for multigpu training, validate same image for all gpus)
         """
-
+        self.ndc_ray = ndc_ray
         self.root_dir = datadir
         self.split = split
         self.hold_every = hold_every
@@ -225,9 +225,14 @@ class DeepvvDataset(Dataset):
         self.near_far = [0, 2.0]
         #self.scene_bbox = torch.tensor([[-1.5, -1.67, -1.0], [1.5, 1.67, 1.0]])
         #self.scene_bbox = torch.tensor([[-15.0, -15.0, -15.0], [15.0, 15.0, 15.0]])
-        self.scene_bbox = torch.tensor([[-4.0, -4.0, -4.0], [4.0, 4.0, 4.0]])
+        self.scene_bbox = torch.tensor([[-2.0, -2.0, -2.0], [2.0, 2.0, 2.0]])
         self.center = torch.mean(self.scene_bbox, dim=0).float().view(1, 1, 3)
         self.invradius = 1.0 / (self.scene_bbox[1] - self.center).float().view(1, 1, 3)
+
+        #sphere parameter
+        self.sph_box = [-1.8, 1.8]
+        self.sph_frontback = [1, 6]
+        
 
     def read_meta(self):
 
@@ -236,12 +241,13 @@ class DeepvvDataset(Dataset):
             view_list = json.load(f)
         H, W = view_list[0]['height'],  view_list[0]['width']
         self.img_wh = np.array([int(W / self.downsample), int(H / self.downsample)])
-        self.near_fars = np.array([0.1,10])
+        self.near_fars = np.array([0.,1.0])
 
         self.all_rays = []
         self.all_rgbs = []
         self.poses = []
         self.directions = None
+        self.origin = []
         #i_test = np.arange(0, self.poses.shape[0], self.hold_every)
         i_test = [i for i in range(0, len(view_list), self.hold_every)]
         #i_train = [i if i not in i_test for i in range(len(view_list)) ]
@@ -251,6 +257,7 @@ class DeepvvDataset(Dataset):
                 new_list.append(view)
             elif self.split == 'train' and i not in i_test:
                 new_list.append(view)
+            if i == 24 : break #Need to be removed
 
         #pdb.set_trace()
         for i, view in enumerate(new_list):
@@ -268,6 +275,7 @@ class DeepvvDataset(Dataset):
             
             R = Rotation.from_rotvec(view['orientation']).as_matrix()
             t = np.array(view['position'])[:, np.newaxis]
+            self.origin.append(t)
             c2w = np.concatenate((R, -np.dot(R, t)), axis=1)
             c2w = torch.FloatTensor(c2w)
             K = np.array([[view['focal_length']*self.img_wh[0]/W, 0.0, view['principal_point'][0]*self.img_wh[0]/W],
@@ -306,6 +314,9 @@ class DeepvvDataset(Dataset):
             self.all_rgbs = torch.stack(self.all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
         #pdb.set_trace()
         self.poses = np.stack(self.poses,0)
+        self.origin = np.mean(self.origin,0)
+
+        #bad render_path
         #poses, self.pose_avg = center_poses(self.poses, self.blender2opencv)
         #self.render_path = get_spiral(self.poses, self.near_fars, rads_scale=0.1, N_views=30)
         self.render_path = np.eye(4)

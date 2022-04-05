@@ -5,6 +5,7 @@ from models.tensoRF import TensorVM, TensorCP, raw2alpha, TensorVMSplit, AlphaGr
 #from models.hashgrid import HashGridDecomposition
 from models.pure import *
 from models.tensor5D import TensorF5D
+from models.tensorSph import TensorSph
 from utils import *
 from dataLoader.ray_utils import ndc_rays_blender
 import pdb

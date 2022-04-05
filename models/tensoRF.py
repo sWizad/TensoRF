@@ -240,7 +240,6 @@ class TensorVMSplit(TensorBase):
         # line_coef_point (144, 184524)
         # basis_mat (184524, 27)
         # xyz_sampled (184524, 3)
-        # pdb.set_trace()
 
 
         return self.basis_mat((plane_coef_point * line_coef_point).T)

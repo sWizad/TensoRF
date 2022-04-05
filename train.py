@@ -82,8 +82,8 @@ def reconstruction(args):
 
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False)
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True)
+    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False, ndc_ray=args.ndc_ray)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray)
     white_bg = train_dataset.white_bg
     near_far = train_dataset.near_far
     ndc_ray = args.ndc_ray
@@ -136,7 +136,8 @@ def reconstruction(args):
                     pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct,
                     grid_level=args.grid_level, grid_feature_per_level=args.grid_feature_per_level, grid_hash_log2=args.grid_hash_log2, grid_base_resolution=args.grid_base_resolution, grid_level_scale=args.grid_level_scale
                 )
-
+    if args.model_name in ['TensorSph']:
+        tensorf.set_origin(train_dataset.origin,train_dataset.sph_box,train_dataset.sph_frontback)
 
     grad_vars = tensorf.get_optparam_groups(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
@@ -158,8 +159,8 @@ def reconstruction(args):
     PSNRs,PSNRs_test = [],[0]
 
     allrays, allrgbs = train_dataset.all_rays, train_dataset.all_rgbs
-    if not args.ndc_ray:
-        allrays, allrgbs = tensorf.filtering_rays(allrays, allrgbs, bbox_only=True)
+    #if not args.ndc_ray: # filtering_rays need to fix
+    #    allrays, allrgbs = tensorf.filtering_rays(allrays, allrgbs, bbox_only=True)
     trainingSampler = SimpleSampler(allrays.shape[0], args.batch_size)
 
     Ortho_reg_weight = args.Ortho_weight
@@ -214,7 +215,11 @@ def reconstruction(args):
             scaler.update()
         else:
             optimizer.zero_grad()
-            total_loss.backward()
+            try:
+                total_loss.backward()
+            except:
+                print("Something wrong with backward()")
+                pdb.set_trace()
             optimizer.step()
 
         loss = loss.detach().item()
@@ -278,7 +283,7 @@ def reconstruction(args):
                 printlog(f"continuing L1_reg_weight {L1_reg_weight}")
 
 
-            if not args.ndc_ray and iteration == update_AlphaMask_list[1]:
+            if not args.ndc_ray and iteration == update_AlphaMask_list[1] and False: # no need to filtering_ray
                 # filter rays outside the bbox
                 allrays,allrgbs = tensorf.filtering_rays(allrays,allrgbs)
                 trainingSampler = SimpleSampler(allrgbs.shape[0], args.batch_size)

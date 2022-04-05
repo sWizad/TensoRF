@@ -11,8 +11,8 @@ from .ray_utils import *
 
 
 class BlenderDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=1.0, is_stack=False, N_vis=-1):
-
+    def __init__(self, datadir, split='train', downsample=1.0, is_stack=False, N_vis=-1, ndc_ray=False):
+        self.ndc_ray = ndc_ray
         self.N_vis = N_vis
         self.root_dir = datadir
         self.split = split

@@ -161,13 +161,13 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
 
 
 class ShinyDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray = True):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)
         val_num: number of val images (used for multigpu training, validate same image for all gpus)
         """
-
+        self.ndc_ray = ndc_ray
         self.root_dir = datadir
         self.split = split
         self.hold_every = hold_every
@@ -185,6 +185,11 @@ class ShinyDataset(Dataset):
         self.scene_bbox = torch.tensor([[-2.0, -2.0, -1.0], [2.0, 2.0, 1.0]])
         self.center = torch.mean(self.scene_bbox, dim=0).float().view(1, 1, 3)
         self.invradius = 1.0 / (self.scene_bbox[1] - self.center).float().view(1, 1, 3)
+
+        #sphere parameter
+        self.origin = np.array([[0],[0],[0]])
+        self.sph_box = [-1.8, 1.8]
+        self.sph_frontback = [1, 6]
 
     def read_meta(self):
 
@@ -259,8 +264,9 @@ class ShinyDataset(Dataset):
             img = img.view(3, -1).permute(1, 0)  # (h*w, 3) RGB
             self.all_rgbs += [img]
             rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
-            rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
-            # viewdir = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
+            if self.ndc_ray:
+                rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
+                # viewdir = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
 
             self.all_rays += [torch.cat([rays_o, rays_d], 1)]  # (h*w, 6)
 
