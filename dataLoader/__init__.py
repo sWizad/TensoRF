@@ -4,6 +4,7 @@ from .blender import BlenderDataset
 from .nsvf import NSVF
 from .tankstemple import TanksTempleDataset
 from .deepvv import DeepvvDataset
+from .meta import MetaVideoDataset
 
 
 
@@ -12,4 +13,5 @@ dataset_dict = {'blender': BlenderDataset,
                'tankstemple':TanksTempleDataset,
                'nsvf':NSVF,
                'shiny':ShinyDataset,
-               'deepvv':DeepvvDataset}
+               'deepvv':DeepvvDataset,
+               'meta':MetaVideoDataset}

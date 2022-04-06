@@ -62,6 +62,46 @@ class TensorSph(TensorVMSplit):
             self.near_far = [1,6]
         '''
 
+    @torch.no_grad()
+    def filtering_rays(self, all_rays, all_rgbs, N_samples=256, chunk=10240*5, bbox_only=False):
+        print('========> filtering rays ...')
+        tt = time.time()
+
+        N = torch.tensor(all_rays.shape[:-1]).prod()
+
+        mask_filtered = []
+        idx_chunks = torch.split(torch.arange(N), chunk)
+        for idx_chunk in idx_chunks:
+            rays_chunk = all_rays[idx_chunk].to(self.device)
+
+            rays_o, rays_d = rays_chunk[..., :3], rays_chunk[..., 3:6]
+            if bbox_only:
+                xyz_sampled = torch.stack([rays_o + self.near_far[0]*rays_d,  rays_o + self.near_far[1]*rays_d], dim = 1)
+                radias = torch.norm(xyz_sampled - self.origin, dim=-1)
+                unit_sphere_point = (xyz_sampled - self.origin) / ( radias[...,None] + 1e-8)
+                xy_point = (torch.asin(unit_sphere_point[...,:2]) - self.sph_box[0]) / (self.sph_box[1] - self.sph_box[0])
+                mmax = xy_point.amax(-1).amax(-1)
+                mmin = xy_point.amin(-1).amin(-1)
+                mask_inbbox = torch.logical_and(mmax < 1, mmin > 0)
+
+                #vec = torch.where(rays_d == 0, torch.full_like(rays_d, 1e-6), rays_d)
+                #rate_a = (self.aabb[1] - rays_o) / vec
+                #rate_b = (self.aabb[0] - rays_o) / vec
+                #t_min = torch.minimum(rate_a, rate_b).amax(-1)#.clamp(min=near, max=far)
+                #t_max = torch.maximum(rate_a, rate_b).amin(-1)#.clamp(min=near, max=far)
+                #mask_inbbox = t_max > t_min
+                #pdb.set_trace()
+
+            else:
+                xyz_sampled, _,_ = self.sample_ray(rays_o, rays_d, N_samples=N_samples, is_train=False)
+                mask_inbbox= (self.alphaMask.sample_alpha(xyz_sampled).view(xyz_sampled.shape[:-1]) > 0).any(-1)
+
+            mask_filtered.append(mask_inbbox.cpu())
+
+        mask_filtered = torch.cat(mask_filtered).view(all_rgbs.shape[:-1])
+
+        print(f'Ray filtering done! takes {time.time()-tt} s. ray mask ratio: {torch.sum(mask_filtered) / N}')
+        return all_rays[mask_filtered], all_rgbs[mask_filtered]
 
     def compute_appfeature(self, xyz_sampled):
         # plane + line basis
@@ -221,7 +261,9 @@ class TensorSph(TensorVMSplit):
         rgb_map = rgb_map.clamp(0,1)
 
         with torch.no_grad():
-            depth_map = torch.sum(weight * z_vals, -1)
-            depth_map = depth_map + (1. - acc_map) * rays_chunk[..., -1]
+            depth_map0 = torch.sum(weight * z_vals, -1)
+            depth_map = depth_map0 + (1. - acc_map) * rays_chunk[..., -1]
+        #if torch.max(depth_map0).cpu().numpy() != 0: print("Hey")
+        #pdb.set_trace()
 
         return rgb_map, depth_map # rgb, sigma, alpha, weight, bg_weight
