@@ -45,7 +45,7 @@ class SimpleSampler:
 def render_test(args):
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray)
     white_bg = test_dataset.white_bg
     ndc_ray = args.ndc_ray
 
@@ -58,6 +58,12 @@ def render_test(args):
     kwargs.update({'device': device})
     tensorf = eval(args.model_name)(**kwargs)
     tensorf.load(ckpt)
+    #pdb.set_trace()
+    if args.model_name in ['TensorSph']:
+        tensorf.set_origin(test_dataset.origin,test_dataset.sph_box,test_dataset.sph_frontback)
+    all_rays = test_dataset.all_rays
+    this_rays = all_rays[0,:100]
+    rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(this_rays, tensorf, chunk=args.batch_size,  N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
     logfolder = os.path.dirname(args.ckpt)
     if args.render_train:
@@ -159,8 +165,8 @@ def reconstruction(args):
     PSNRs,PSNRs_test = [],[0]
 
     allrays, allrgbs = train_dataset.all_rays, train_dataset.all_rgbs
-    #if not args.ndc_ray: # filtering_rays need to fix
-    #    allrays, allrgbs = tensorf.filtering_rays(allrays, allrgbs, bbox_only=True)
+    if not args.ndc_ray: 
+        allrays, allrgbs = tensorf.filtering_rays(allrays, allrgbs, bbox_only=True)
     trainingSampler = SimpleSampler(allrays.shape[0], args.batch_size)
 
     Ortho_reg_weight = args.Ortho_weight
@@ -283,7 +289,7 @@ def reconstruction(args):
                 printlog(f"continuing L1_reg_weight {L1_reg_weight}")
 
 
-            if not args.ndc_ray and iteration == update_AlphaMask_list[1] and False: # no need to filtering_ray
+            if not args.ndc_ray and iteration == update_AlphaMask_list[1]:
                 # filter rays outside the bbox
                 allrays,allrgbs = tensorf.filtering_rays(allrays,allrgbs)
                 trainingSampler = SimpleSampler(allrgbs.shape[0], args.batch_size)

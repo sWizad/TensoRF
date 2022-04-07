@@ -8,5 +8,5 @@ pip3 install PyQt5
 pip install kornia
 
 
-CUDA_VISIBLE_DEVICES=1 python train.py --config configs/lab.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/tensorf_lab_ds2/tensorf_lab_ds2.th 
+CUDA_VISIBLE_DEVICES=0 python train.py --config configs2/lab_test.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/0405/lab_sph2/lab_sph2.th
 CUDA_VISIBLE_DEVICES=0 python train.py --config configs2/welder.txt --render_only 1 --render_path 1 --render_test 0 --ckpt log/welder/welder.th  

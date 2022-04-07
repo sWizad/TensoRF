@@ -120,13 +120,13 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
 
 
 class LLFFDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, *args, **kwargs):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)
         val_num: number of val images (used for multigpu training, validate same image for all gpus)
         """
-
+        self.ndc_ray = ndc_ray
         self.root_dir = datadir
         self.split = split
         self.hold_every = hold_every

@@ -188,8 +188,8 @@ class ShinyDataset(Dataset):
 
         #sphere parameter
         self.origin = np.array([[0],[0],[0]])
-        self.sph_box = [-1.8, 1.8]
-        self.sph_frontback = [1, 6]
+        self.sph_box = [-1., 1.]
+        self.sph_frontback = [10,300]
 
     def read_meta(self):
 
