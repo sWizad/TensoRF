@@ -1,0 +1,46 @@
+
+dataset_name = blender
+datadir = data/nerf_synthetic/lego
+expname =  tensorhashgrid_lego_v4_scaler
+basedir = ./log
+
+model_name = TensorHashGrid
+
+n_iters = 60000
+batch_size = 2048
+
+#N_voxel_init = 2097156 # 128**3
+N_voxel_init = 27000000 # 300**3
+N_voxel_final = 27000000 # 300**3
+#upsamp_list = [2000,3000,4000,5500,7000]
+upsamp_list = [1000000]
+
+#update_AlphaMask_list = [2000,4000]
+update_AlphaMask_list = [1000000]
+
+N_vis = 5
+vis_every = 30000
+
+render_test = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+#n_lamb_sigma = [4,4,4]
+#n_lamb_sh = [4,4,4]
+
+shadingMode = MLP_Fea
+fea2denseAct = softplus
+
+view_pe = 2
+fea_pe = 2
+
+lr_init = 0.01
+L1_weight_inital = 0
+L1_weight_rest = 0
+rm_weight_mask_thre = 1e-4
+
+
+#HASHGRID CONFIGURATIOB
+grid_feature_per_level = 1
+grad_scaler = True
+#network_autocast = True
