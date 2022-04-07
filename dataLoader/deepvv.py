@@ -203,7 +203,7 @@ def get_rays(directions, c2w):
     return rays_o
 
 class DeepvvDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, **kwargs):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)

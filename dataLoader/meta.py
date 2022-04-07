@@ -160,7 +160,7 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
 
 
 class MetaVideoDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, **kwargs):
         """
         spheric_poses: whether the images are taken in a spheric inward-facing manner
                        default: False (forward-facing)
@@ -174,7 +174,6 @@ class MetaVideoDataset(Dataset):
         self.downsample = downsample
         self.define_transforms()
         self.max_t = max_t
-
         self.blender2opencv = np.eye(4)#np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
         self.read_meta()
         self.white_bg = False
@@ -241,7 +240,6 @@ class MetaVideoDataset(Dataset):
         dists = np.sum(np.square(average_pose[:3, 3] - self.poses[:, :3, 3]), -1)
         i_test = np.arange(0, self.poses.shape[0], self.hold_every)  # [np.argmin(dists)]
         img_list = i_test if self.split != 'train' else list(set(np.arange(len(self.poses))) - set(i_test))
-
 
         self.all_rays = []
         self.all_rgbs = []

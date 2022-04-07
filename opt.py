@@ -137,7 +137,9 @@ def config_parser(cmd=None):
     parser.add_argument('--grid_level_scale', type=float, default = 2)
     parser.add_argument('--grad_scaler', type=bool, default = False)
     parser.add_argument('--network_autocast', type=bool, default = False)
-
+    
+    #video configuration
+    parser.add_argument('--num_frames', help="number of frames for video training (AKA, max_t in meta dataset)", type=int, default = 1)
 
     if cmd is not None:
         return parser.parse_args(cmd)

@@ -45,7 +45,7 @@ class SimpleSampler:
 def render_test(args):
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
     white_bg = test_dataset.white_bg
     ndc_ray = args.ndc_ray
 
@@ -68,7 +68,7 @@ def render_test(args):
     logfolder = os.path.dirname(args.ckpt)
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True)
+        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
         PSNRs_test = evaluation(train_dataset,tensorf, args, renderer, f'{logfolder}/imgs_train_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
         print(f'======> {args.expname} train all psnr: {np.mean(PSNRs_test)} <========================')
@@ -88,8 +88,8 @@ def reconstruction(args):
 
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False, ndc_ray=args.ndc_ray)
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray)
+    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False, ndc_ray=args.ndc_ray, max_t=args.num_frames)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
     white_bg = train_dataset.white_bg
     near_far = train_dataset.near_far
     ndc_ray = args.ndc_ray
@@ -140,7 +140,7 @@ def reconstruction(args):
                     density_n_comp=n_lamb_sigma, appearance_n_comp=n_lamb_sh, app_dim=args.data_dim_color, near_far=near_far,
                     shadingMode=args.shadingMode, alphaMask_thres=args.alpha_mask_thre, density_shift=args.density_shift, distance_scale=args.distance_scale,
                     pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct,
-                    grid_level=args.grid_level, grid_feature_per_level=args.grid_feature_per_level, grid_hash_log2=args.grid_hash_log2, grid_base_resolution=args.grid_base_resolution, grid_level_scale=args.grid_level_scale
+                    grid_level=args.grid_level, grid_feature_per_level=args.grid_feature_per_level, grid_hash_log2=args.grid_hash_log2, grid_base_resolution=args.grid_base_resolution, grid_level_scale=args.grid_level_scale,
                 )
     if args.model_name in ['TensorSph']:
         tensorf.set_origin(train_dataset.origin,train_dataset.sph_box,train_dataset.sph_frontback)
@@ -318,7 +318,7 @@ def reconstruction(args):
 
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True)
+        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
         PSNRs_test = evaluation(train_dataset,tensorf, args, renderer, f'{logfolder}/imgs_train_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
         printlog(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')
