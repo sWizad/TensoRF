@@ -26,7 +26,7 @@ def config_parser(cmd=None):
     parser.add_argument("--n_iters", type=int, default=30000)
 
     parser.add_argument('--dataset_name', type=str, default='blender',
-                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta'])
+                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy'])
 
 
     # training options
@@ -140,6 +140,9 @@ def config_parser(cmd=None):
     
     #video configuration
     parser.add_argument('--num_frames', help="number of frames for video training (AKA, max_t in meta dataset)", type=int, default = 1)
+    parser.add_argument('--hold_every', help="number of holdout ever x camera (default: 8, matched LLFF)", type=int, default = 8)
+    parser.add_argument('--visualize_tensor', type=int, default = 1)
+
 
     if cmd is not None:
         return parser.parse_args(cmd)

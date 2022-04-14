@@ -6,6 +6,7 @@ import logging
 import ruamel.yaml 
 yaml2 = ruamel.yaml.YAML()
 from utils import set_logger, printlog
+from collections import OrderedDict
 
 
 import json, random
@@ -45,7 +46,7 @@ class SimpleSampler:
 def render_test(args):
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
     white_bg = test_dataset.white_bg
     ndc_ray = args.ndc_ray
 
@@ -56,6 +57,8 @@ def render_test(args):
     ckpt = torch.load(args.ckpt, map_location=device)
     kwargs = ckpt['kwargs']
     kwargs.update({'device': device})
+    if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
+        kwargs.update({'max_t': args.num_frames})
     tensorf = eval(args.model_name)(**kwargs)
     tensorf.load(ckpt)
     #pdb.set_trace()
@@ -68,7 +71,7 @@ def render_test(args):
     logfolder = os.path.dirname(args.ckpt)
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
+        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
         PSNRs_test = evaluation(train_dataset,tensorf, args, renderer, f'{logfolder}/imgs_train_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
         print(f'======> {args.expname} train all psnr: {np.mean(PSNRs_test)} <========================')
@@ -88,8 +91,8 @@ def reconstruction(args):
 
     # init dataset
     dataset = dataset_dict[args.dataset_name]
-    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False, ndc_ray=args.ndc_ray, max_t=args.num_frames)
-    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
+    train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=False, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
+    test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
     white_bg = train_dataset.white_bg
     near_far = train_dataset.near_far
     ndc_ray = args.ndc_ray
@@ -136,12 +139,37 @@ def reconstruction(args):
         tensorf = eval(args.model_name)(**kwargs)
         tensorf.load(ckpt)
     else:
+        """
         tensorf = eval(args.model_name)(aabb, reso_cur, device,
                     density_n_comp=n_lamb_sigma, appearance_n_comp=n_lamb_sh, app_dim=args.data_dim_color, near_far=near_far,
                     shadingMode=args.shadingMode, alphaMask_thres=args.alpha_mask_thre, density_shift=args.density_shift, distance_scale=args.distance_scale,
                     pos_pe=args.pos_pe, view_pe=args.view_pe, fea_pe=args.fea_pe, featureC=args.featureC, step_ratio=args.step_ratio, fea2denseAct=args.fea2denseAct,
                     grid_level=args.grid_level, grid_feature_per_level=args.grid_feature_per_level, grid_hash_log2=args.grid_hash_log2, grid_base_resolution=args.grid_base_resolution, grid_level_scale=args.grid_level_scale,
                 )
+        """
+        # Pure: Dynamic Ordered dict for easily design a model without conflict 
+        kwargs = OrderedDict([
+            ("aabb", aabb),
+            ("gridSize", reso_cur),
+            ("device", device),
+            ("density_n_comp", n_lamb_sigma),
+            ("appearance_n_comp", n_lamb_sh),
+            ("app_dim", args.data_dim_color),
+            ("near_far", near_far),
+            ("shadingMode", args.shadingMode),
+            ("alphaMask_thres", args.alpha_mask_thre),
+            ("density_shift", args.density_shift),
+            ("distance_scale", args.distance_scale),
+            ("pos_pe",args.pos_pe),
+            ("view_pe",args.view_pe), 
+            ("fea_pe", args.fea_pe),
+            ("featureC", args.featureC), 
+            ("step_ratio", args.step_ratio), 
+            ("fea2denseAct", args.fea2denseAct)
+        ])    
+        if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
+            kwargs["max_t"] = args.num_frames 
+        tensorf = eval(args.model_name)(**kwargs)
     if args.model_name in ['TensorSph']:
         tensorf.set_origin(train_dataset.origin,train_dataset.sph_box,train_dataset.sph_frontback)
 
@@ -235,7 +263,7 @@ def reconstruction(args):
         summary_writer.add_scalar('train/mse', loss, global_step=iteration)
 
         
-        if True and (iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000):
+        if args.visualize_tensor > 0 and ((iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000)):
             torch.cuda.empty_cache()
             #pdb.set_trace()
             W, H = test_dataset.img_wh
@@ -318,7 +346,7 @@ def reconstruction(args):
 
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames)
+        train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
         PSNRs_test = evaluation(train_dataset,tensorf, args, renderer, f'{logfolder}/imgs_train_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
         printlog(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')

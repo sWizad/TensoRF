@@ -7,6 +7,7 @@ from PIL import Image
 from torchvision import transforms as T
 from scipy.spatial.transform import Rotation, Slerp
 import pdb
+from tqdm.auto import tqdm
 
 from .ray_utils import *
 
@@ -238,20 +239,24 @@ class MetaVideoDataset(Dataset):
 
         average_pose = average_poses(self.poses)
         dists = np.sum(np.square(average_pose[:3, 3] - self.poses[:, :3, 3]), -1)
-        i_test = np.arange(0, self.poses.shape[0], self.hold_every)  # [np.argmin(dists)]
-        img_list = i_test if self.split != 'train' else list(set(np.arange(len(self.poses))) - set(i_test))
-
+        i_test = np.arange(0, self.poses.shape[0], self.hold_every)  # [np.argmin(dists)]   
+        num_cameras = 21 #len(self.poses)# we fix number of input camera instead
+        img_list = i_test if self.split != 'train' else list(set(np.arange(num_cameras)) - set(i_test))
         self.all_rays = []
         self.all_rgbs = []
-        for i, view in enumerate(img_list):
-            c2w = torch.FloatTensor(self.poses[i])
+        missing_view = 0
+        for i, view in enumerate(tqdm(img_list)):
+            if not os.path.exists(os.path.join(self.root_dir,f'frames/c{view:02d}')): 
+                missing_view += 1
+                continue #skip missing input view
+            #c2w = torch.FloatTensor(self.poses[i])
+            c2w = torch.FloatTensor(self.poses[view - missing_view])
             rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
             rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
             # viewdir = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
-
+        
             for t in range(self.max_t):
-                image_path = os.path.join(self.root_dir,f'frames/c{i+1:02d}/f{t+1:04d}.png')
-
+                image_path = os.path.join(self.root_dir,f'frames/c{view:02d}/f{t+1:04d}.png') #change to view instead, sometimes i is not consequtive [i_test]
                 img = Image.open(image_path).convert('RGB')
                 if self.downsample != 1.0:
                     img = img.resize(self.img_wh, Image.LANCZOS)
@@ -266,7 +271,6 @@ class MetaVideoDataset(Dataset):
         else:
             self.all_rays = torch.stack(self.all_rays, 0)   # (len(self.meta['frames]),h,w, 3)
             self.all_rgbs = torch.stack(self.all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
-
 
 
     def read_meta_old(self):       

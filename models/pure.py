@@ -4,3 +4,6 @@
 #from .tensoRF_plane_only import TensorRFPlaneOnly   
 #from .triplane_classic import TriPlaneClassic
 #from .tensorhashgridincrease import TensorHashGridIncrease
+from .tensoRFVideo import TensoRFVideo
+from .NeRFVideo import NeRFVideo
+from .Neural3DVideo import Neural3DVideo
