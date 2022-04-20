@@ -6,7 +6,7 @@ from .tankstemple import TanksTempleDataset
 from .deepvv import DeepvvDataset
 from .meta import MetaVideoDataset
 from .meta_lazy import MetaVideoLazyDataset
-
+from .meta_dynamic import MetaDynamicDataset
 
 
 dataset_dict = {'blender': BlenderDataset,
@@ -16,4 +16,5 @@ dataset_dict = {'blender': BlenderDataset,
                'shiny':ShinyDataset,
                'deepvv':DeepvvDataset,
                'meta':MetaVideoDataset,
-               'meta_lazy': MetaVideoLazyDataset}
+               'meta_lazy': MetaVideoLazyDataset,
+               'meta_dynamic': MetaDynamicDataset}

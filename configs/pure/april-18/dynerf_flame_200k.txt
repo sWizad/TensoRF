@@ -1,0 +1,50 @@
+#  experiment on handling video frame
+
+dataset_name = meta
+datadir = data/meta_3d_video/flame_salmon
+expname =  pure_april-18_dynerf_flame_200k
+basedir = ./log
+add_timestamp = 0
+
+downsample_train = 2.640625 # downscale to "1K" resolution. AKA 1024x768
+ndc_ray = 1
+
+n_iters = 200000
+batch_size = 1024
+
+N_voxel_init = 134217728 # 128**3
+N_voxel_final = 134217728 #512**3
+update_AlphaMask_list = [9999999]
+upsamp_list = [9999999]
+
+N_vis = 5
+vis_every = 5000000000
+
+data_dim_color = 3
+visualize_tensor = 0
+n_lamb_sigma = [16,4,4]
+n_lamb_sh = [48,12,12]
+
+shadingMode = RGB
+fea2denseAct = relu 
+
+view_pe = 4
+#fea_pe = 10
+pos_pe = 10
+featureC = 256
+data_parallel = 1
+lr_init = 5e-3
+lr_basis = 5e-4
+lr_decay_target_ratio = 0.1  
+nSamples = 768      
+
+TV_weight_density = 0.0
+TV_weight_app = 0.0
+
+model_name = Neural3DVideo
+num_frames = 30
+hold_every = 1000000 #BIG NUMBER TO USE ONLY FIRST AS VALIDATION
+
+render_train = 0 
+render_test = 1 
+render_path = 0

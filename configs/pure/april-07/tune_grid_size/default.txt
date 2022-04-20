@@ -1,7 +1,7 @@
 
 dataset_name = meta
 datadir = data/meta_3d_video/cook_spinach
-expname =  pure/april-07/tune_grid_size/default
+expname =  pure_april-07_tune_grid_size_default
 basedir = ./log
 add_timestamp = 0
 

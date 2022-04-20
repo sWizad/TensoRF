@@ -9,9 +9,7 @@ class Neural3DVideo(TensorBase):
     def __init__(self, *args, **kwargs):
         self.max_t = kwargs['max_t']
         self.nerf_hidden, self.pos_pe, self.view_pe = kwargs['featureC'], kwargs['pos_pe'], kwargs['view_pe']
-        self.latent_size = 128
-
-        print("Neural3DVideo: A modification version of NeRF to handle video")
+        self.latent_size = 256
         super().__init__(*args, **kwargs) #initail super class
 
     def get_optparam_groups(self, lr_init_spatialxyz = 0.02, lr_init_network = 0.001):
@@ -20,7 +18,7 @@ class Neural3DVideo(TensorBase):
             {'params': self.sigma_back_net.parameters(), 'lr': lr_init_network},
             {'params': self.sigma_layer.parameters(), 'lr': lr_init_network},
             {'params': self.color_net.parameters(), 'lr':lr_init_network},
-            #{'params': self.latent_vecs, 'lr': lr_init_spatialxyz}
+            {'params': self.latent_vec, 'lr': lr_init_spatialxyz}
         ]
         if isinstance(self.renderModule, torch.nn.Module):
             grad_vars += [{'params':self.renderModule.parameters(), 'lr':lr_init_network}]
@@ -34,9 +32,12 @@ class Neural3DVideo(TensorBase):
         pos_pe = (self.pos_pe * 2) * 3 # input is x,y,z,t
         view_pe = ((self.view_pe * 2) * 3) #input is vx,vy,vz
         scale = 0.1
+        """
         self.latent_vecs = torch.nn.ParameterList([
             torch.nn.Parameter(torch.randn(self.max_t, self.latent_size, requires_grad=True) * scale)
         ]).to(device)
+        """
+        self.latent_vec = torch.nn.Parameter(scale * torch.randn((self.max_t, self.latent_size), device=device))
 
         self.sigma_front_net = torch.nn.Sequential(
             torch.nn.Linear(pos_pe+self.latent_size, hidden_size),
@@ -69,11 +70,29 @@ class Neural3DVideo(TensorBase):
             torch.nn.Sigmoid(),
         ).to(device)
 
+    def normalize_coord(self, xyz_sampled):
+        aabb = self.aabb.to(xyz_sampled.device)
+        invaabbSize = self.invaabbSize.to(xyz_sampled.device)
+        return (xyz_sampled-aabb[0]) * invaabbSize - 1
+
+    def sample_ray_ndc(self, rays_o, rays_d, is_train=True, N_samples=-1):
+        N_samples = N_samples if N_samples > 0 else self.nSamples
+        near, far = self.near_far
+        interpx = torch.linspace(near, far, N_samples).unsqueeze(0).to(rays_o)
+        if is_train:
+            interpx += torch.rand_like(interpx).to(rays_o) * ((far - near) / N_samples)
+
+        rays_pts = rays_o[..., None, :] + rays_d[..., None, :] * interpx[..., None]
+        aabb = self.aabb.to(rays_pts.device)
+        mask_outbbox = ((aabb[0] > rays_pts) | (rays_pts > aabb[1])).any(dim=-1)
+        return rays_pts, interpx, ~mask_outbbox
+
     def feature2density(self, sigma_feature):
         return self.sigma_layer(sigma_feature)[...,0]
 
     def compute_densityfeature(self, xyz_sampled, time_sampled):
-        latent = self.latent_vecs[0][time_sampled.detach()]
+        latent = self.latent_vec.to(xyz_sampled.device)
+        latent = latent[time_sampled.detach()]
         sampled = positional_encoding(xyz_sampled, self.pos_pe)
         sampled = torch.cat([sampled, latent],dim=-1)
         x = self.sigma_front_net(sampled)

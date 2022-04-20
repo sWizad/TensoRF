@@ -13,11 +13,13 @@ import pdb
 from tqdm.auto import tqdm
 from multiprocessing import Pool
 from functools import partial
-from skimage import img_as_float, io
+from skimage import img_as_float, img_as_ubyte, io
+import time
 
 
 class MetaVideoLazyDataset(Dataset):
     def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, **kwargs):
+        print('MetaVideoLazyDataset')
         #TODO: need to config proper variable
         # initialize variable 
         self.root_dir = datadir
@@ -25,7 +27,6 @@ class MetaVideoLazyDataset(Dataset):
 
         self.prepare_memmap()
 
-        exit()
         self.ndc_ray = ndc_ray
         self.split = split
         self.hold_every = hold_every
@@ -52,9 +53,15 @@ class MetaVideoLazyDataset(Dataset):
     def prepare_memmap(self):
         # copy or create memmap if not existed.
         # we use memmap instead of the original dataset for faster file seeking
-        memmap_datapath = os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))
-        if not os.path.exists(memmap_datapath):
-            self.create_memmap(memmap_datapath)
+        if not os.path.exists(os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))) or not os.path.exists(os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample))):
+            print("#TODO: NEED TO BE REMOVE")
+            print("EXIT: SAFEGUARD BEFORE MEMMAP")
+            exit()
+            self.create_memmap()
+        if not os.path.exists(os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample))):
+            self.create_median()
+        print("ANOTHER SAFEGUARD")
+        exit()
         # copy memmap to local instead of using Network attach storage
         hostname = socket.gethostname()
         cache_path = None
@@ -68,8 +75,23 @@ class MetaVideoLazyDataset(Dataset):
             dst_path = os.path.join(cache_path, memmap_datapath_abs)
             shutil.copy2(memmap_datapath, dst_path)
             memmap_datapath = dst_path
+
+    def create_median(self):
+        print('creating median image...')
+        start_time = time.time()
+        with open(os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample)), 'r') as f:
+            meta = json.load(f)
+        num_threads = 10 # please manually set the number of threads on the machine that has Out-of-memory problem
+        fn = partial(median_process, self.root_dir, self.downsample, len(meta['video']))
+        with Pool(num_threads) as p: 
+            images = p.map(fn, enumerate(meta['video']))
+            np.save(os.path.join('median_{}.npy'.format(self.downsample)), np.concatenate([img[None] for img in images],axis=0))
+        print('======= break XD =====')
+        exit()
  
-    def create_memmap(self, memmap_datapath):
+    def create_memmap(self):
+        print('creating memmap...')
+        start_time = time.time()
         # check pre-require software
         if shutil.which('ffmpeg') is None:
             raise Exception("FFmpeg is require to pre-process video.")
@@ -77,18 +99,23 @@ class MetaVideoLazyDataset(Dataset):
             raise Exception("FFprobe is missing. we recommend to install FFmpeg from APT which include FFprobe")
         # list video first
         video_files = sorted([f for f in os.listdir(self.root_dir) if f.endswith(".mp4")])
-        fn = partial(memmap_process, self.root_dir, self.downsample)
-        print("VIDEO FILES")
+        num_inputview = len(video_files)
+        fn = partial(memmap_process, self.root_dir, self.downsample, num_inputview)
         num_threads = 8 # please manually set the number of threads on the machine that has Out-of-memory problem
+        raw_meta = get_video_metadata(os.path.join(self.root_dir, video_files[0]))
+        num_frames = int(raw_meta['streams'][0]['nb_read_packets'])
+        height =  int(raw_meta['streams'][0]['height'] / self.downsample)
+        width =  int(raw_meta['streams'][0]['width'] / self.downsample)
+        memfile_path = os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))     
+        create_memfile(memfile_path, (num_inputview*num_frames*height*width,3))
         with Pool(num_threads) as p:
-            video_metadata = p.map(fn, video_files)
-            with open("video_meta_res{}.json".format(self.downsample), 'w') as f:
+            a = list(enumerate(video_files[:2]))          
+            video_metadata = p.map(fn, list(enumerate(video_files)))
+            with open(os.path.join(self.root_dir, "video_meta_{}.json".format(self.downsample)), 'w') as f:
                 json.dump({
                     "video": video_metadata
-                })
-            print("VIDEO_METADATA")
-            print(video_metadata)
-        exit()
+                },f,indent=4)
+            print("created memmap in " ,time.time() - start_time, "seconds...")
 
     def read_meta(self):
         #with open('data/deepview_video/01_Welder/models.json') as f:
@@ -183,7 +210,8 @@ class MetaVideoLazyDataset(Dataset):
         return sample
 
 def get_video_metadata(file):
-    cmd = 'ffprobe -v error -select_streams v -i {} -show_entries stream=width,height  -of json'.format(file)
+    #cmd = 'ffprobe -v error -select_streams v -i {} -show_entries stream=width,height  -of json'.format(file)
+    cmd = 'ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=width,height,nb_read_packets -of json {}'.format(file)
     output = subprocess.check_output(
         cmd,
         shell=True, # Let this run in the shell
@@ -192,13 +220,38 @@ def get_video_metadata(file):
     return json.loads(output)
 
 
-def memmap_process(directory, downsample, input_file):
+def median_process(directory, downsample, num_cams, frame_data):
+    name = frame_data[1]['name']
+    print(name)
+    cam_id = frame_data[0]
+    height = frame_data[1]['height']
+    width = frame_data[1]['width']
+    num_frames = frame_data[1]['num_frames']
+    memfile_path = os.path.join(directory,'rgb_{}.memmap'.format(downsample))
+    fp = np.memmap(memfile_path, dtype=np.ubyte, mode='r', offset=0, shape=(num_cams*num_frames*height*width,3), order='C') #flat line of
+    start_offset = cam_id * num_frames*height*width
+    end_offset = (cam_id+1) * num_frames*height*width
+    pixels = fp[start_offset:end_offset].reshape((num_frames,height*width,3))
+    pixels = np.median(pixels,axis=0)
+    median_dir = os.path.join(directory, 'median_{}'.format(downsample))
+    os.makedirs(median_dir, exist_ok=True)
+    print(os.path.join(median_dir,'{}.png'.format(name)))
+    io.imsave(os.path.join(directory,'median','{}.png'.format(name)), pixels.reshape(height,width,3)) # write median image for visualization
+    return pixels
+
+
+
+
+def memmap_process(directory, downsample, num_cams, input_file):
+    file_id = input_file[0]
+    input_file = input_file[1]
     video_path = os.path.join(directory, input_file)
     video_meta = get_video_metadata(video_path)
     height = int(video_meta['streams'][0]['height'] / downsample)
     width = int(video_meta['streams'][0]['width'] / downsample)
     input_name = ".".join(str(input_file).split('.')[:-1])
-    frame_dir = os.path.join(directory, "{}_res{}".format(input_name, downsample))
+    frame_dir = os.path.join(directory, "{}_{}".format(input_name, downsample))
+    print(frame_dir)
     os.makedirs(frame_dir, mode=0o777, exist_ok=True)
     subprocess.check_output(
         "ffmpeg -i {} -vf scale={}:{} {}".format(video_path, width, height, str(os.path.join(frame_dir,'frame_%04d.png'))),
@@ -206,14 +259,17 @@ def memmap_process(directory, downsample, input_file):
         stderr=subprocess.STDOUT
     )
     img_files = sorted([os.path.join(frame_dir,f) for f in os.listdir(frame_dir) if f.endswith('.png')])
-    num_files = len(img_files)
-    #ffmpeg -i input.mp4 -vf scale=$w:$h 'frame_%04d.png'
-    fp = np.memmap(os.path.join(directory,'{}_res{}.memmap'.format(input_name,downsample)), dtype=np.float32, mode='w+', offset=0, shape=(num_files*height*width,3), order='C') #flat line of
-    offset = 0
+    num_frames = len(img_files)
+    #fp = np.memmap(os.path.join(directory,'{}_res{}.memmap'.format(input_name,downsample)), dtype=np.ubyte, mode='w+', offset=0, shape=(num_frames*height*width,3), order='C') #flat line of
+    
+    memfile_path = os.path.join(directory,'rgb_{}.memmap'.format(downsample))
+    fp = np.memmap(memfile_path, dtype=np.ubyte, mode='r+', offset=0, shape=(num_cams*num_frames*height*width,3), order='C') #flat line of
+    #offset = 0
+    offset = file_id*num_frames*height*width
     for i,f in enumerate(img_files):
         img = io.imread(f)
         img = img[...,:3] # only RGB can continue
-        img = img_as_float(img)
+        img = img_as_ubyte(img)
         img = img.reshape((-1,3))
         fp[offset:offset+img.shape[0]] = img
         offset += img.shape[0]
@@ -221,7 +277,14 @@ def memmap_process(directory, downsample, input_file):
     fp.flush() #write content to file
     shutil.rmtree(frame_dir)
     return {
-        'num_frames': num_files,
+        'id': int(input_name[3:]),
+        'name': input_name,
+        'num_frames': num_frames,
         'height': height,
         'width': width
     }
+
+def create_memfile(f,s):
+    if not os.path.exists(f):
+        fp = np.memmap(f, dtype=np.ubyte, mode='w+', offset=0, shape=s, order='C') #flat line of
+            

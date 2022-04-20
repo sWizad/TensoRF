@@ -1,0 +1,51 @@
+#  experiment on handling video frame
+
+dataset_name = meta
+datadir = data/meta_3d_video/flame_salmon
+expname =  pure_april-15_nerf_verify_10k_flame
+basedir = ./log
+add_timestamp = 0
+
+downsample_train = 2.640625 # downscale to "1K" resolution. AKA 1024x768
+ndc_ray = 1
+
+n_iters = 10000
+#batch_size = 4096
+batch_size = 2048
+
+#N_voxel_init = 2097156 # 128**3
+N_voxel_init = 134217728 #512**3
+N_voxel_final = 134217728 #512**3
+#upsamp_list = [2000,3000,4000,5000,7000]
+upsamp_list = [200000,300000,400000,500000,700000]
+#update_AlphaMask_list = [2000,4000]
+update_AlphaMask_list = [200000,400000]
+
+N_vis = 5
+vis_every = 5000000
+
+data_dim_color = 3
+nSamples = 768
+visualize_tensor = 0
+n_lamb_sigma = [16,4,4]
+n_lamb_sh = [48,12,12]
+
+shadingMode = RGB
+fea2denseAct = relu 
+
+view_pe = 4
+#fea_pe = 10
+pos_pe = 10
+featureC = 256
+data_parallel = 1
+
+TV_weight_density = 0.0
+TV_weight_app = 0.0
+
+model_name = NeRF
+num_frames = 1
+hold_every = 1000000 #BIG NUMBER TO USE ONLY FIRST AS VALIDATION
+
+render_train = 1 
+render_test = 1 
+render_path = 1

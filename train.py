@@ -66,7 +66,10 @@ def render_test(args):
         tensorf.set_origin(test_dataset.origin,test_dataset.sph_box,test_dataset.sph_frontback)
     all_rays = test_dataset.all_rays
     this_rays = all_rays[0,:100]
-    rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(this_rays, tensorf, chunk=args.batch_size,  N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
+    tensorf_for_renderer = tensorf 
+    if args.data_parallel:
+        tensorf_for_renderer = torch.nn.DataParallel(tensorf)
+    rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(this_rays, tensorf_for_renderer, chunk=args.batch_size,  N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
     logfolder = os.path.dirname(args.ckpt)
     if args.render_train:
@@ -208,6 +211,9 @@ def reconstruction(args):
 
     scaler = GradScaler()
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout)
+    tensorf_for_renderer = tensorf 
+    if args.data_parallel:
+        tensorf_for_renderer = torch.nn.DataParallel(tensorf)
     for iteration in pbar:
         with autocast(enabled=False):
             #if iteration %50 > 5 and iteration %50 < 48 : continue
@@ -216,7 +222,7 @@ def reconstruction(args):
             rays_train, rgb_train = allrays[ray_idx], allrgbs[ray_idx].to(device)
 
             #rgb_map, alphas_map, depth_map, weights, uncertainty
-            rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(rays_train, tensorf, chunk=args.batch_size,
+            rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(rays_train, tensorf_for_renderer, chunk=args.batch_size,
                                     N_samples=nSamples, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
             loss = torch.mean((rgb_map - rgb_train) ** 2)
@@ -249,11 +255,11 @@ def reconstruction(args):
             scaler.update()
         else:
             optimizer.zero_grad()
-            try:
-                total_loss.backward()
-            except:
-                print("Something wrong with backward()")
-                pdb.set_trace()
+            #try:
+            total_loss.backward()
+            #except:
+            #    print("Something wrong with backward()")
+            #    pdb.set_trace()
             optimizer.step()
 
         loss = loss.detach().item()
@@ -261,6 +267,21 @@ def reconstruction(args):
         PSNRs.append(-10.0 * np.log(loss) / np.log(10.0))
         summary_writer.add_scalar('train/PSNR', PSNRs[-1], global_step=iteration)
         summary_writer.add_scalar('train/mse', loss, global_step=iteration)
+        summary_writer.add_scalar('train/learning_rate', optimizer.param_groups[0]['lr'], global_step=iteration)
+        
+        if False and iteration % (args.n_iters // 20) == 0:
+            with torch.no_grad():
+                print("rendering images... at step {}".format(iteration))
+                W, H = test_dataset.img_wh
+                samples = test_dataset.all_rays[0]
+                rays = samples.view(-1,samples.shape[-1])
+                rgb_map, _, depth_map, _, _ = renderer(rays, tensorf_for_renderer, chunk=256, N_samples=nSamples, ndc_ray=ndc_ray, white_bg = white_bg, device=device)
+                rgb_map = rgb_map.clamp(0.0, 1.0)
+                rgb_map, depth_map = rgb_map.reshape(H, W, 3).cpu(), depth_map.reshape(H, W).cpu()
+                summary_writer.add_image('train/eval_image', rgb_map.permute(2,0,1), global_step=iteration)
+                near_far = test_dataset.near_far
+                depth_map, _ = visualize_depth_numpy(depth_map.numpy(),near_far)            
+                summary_writer.add_image('train/eval_depth', torch.from_numpy(depth_map).permute(2,0,1), global_step=iteration)
 
         
         if args.visualize_tensor > 0 and ((iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000)):

@@ -289,3 +289,13 @@ class TensoRFVideo(TensorVMSplit):
         alpha = 1 - torch.exp(-sigma*length).view(xyz_locs.shape[:-1])
 
         return alpha
+
+
+class TensoRFVideoStaticColor(TensoRFVideo):
+    def init_svd_volume(self, res, device):
+        self.density_plane, self.density_line, self.density_time = self.init_one_svd(self.density_n_comp, self.gridSize, 0.1, device)
+        self.app_plane, self.app_line, self.app_time = self.init_one_svd(self.app_n_comp, self.gridSize, 0.1, device)
+        self.basis_mat = torch.nn.Sequential(
+            torch.nn.Linear(sum(self.app_n_comp), 3),
+            torch.nn.Sigmoid()
+        ).to(device) #output only 3 color to create static color instead
