@@ -1,10 +1,14 @@
 # tensoRF video model
+# TODO: 1. support time coarse to fine
+# TODO: 2. verify that it can run well with crop image
+# TODO: 3. try harder dataset
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 from utils import printlog
 from .tensoRF import TensorVMSplit
-from .tensorBase import raw2alpha
+from .tensorBase import raw2alpha, AlphaGridMask
 
 class TensoRFVideo(TensorVMSplit):
     """
@@ -12,15 +16,11 @@ class TensoRFVideo(TensorVMSplit):
     """
     def __init__(self, *args, **kwargs):
         print("Model: TensoRFVideo")
-        """
-        if len(kwargs['density_n_comp']) != 4:
-            raise Exception('`n_lamb_sigma` need to be 4 dimension to support time')
-        if len(kwargs['appearance_n_comp']) != 4:
-            raise Exception('`n_lamb_sh` need to be 4 dimension to support time')
-        if not 'max_t' in kwargs:
-            raise Exception('require to set `num_frames` in config files')
-        """
         self.max_t = kwargs['max_t']
+        #self.t_keyframe = kwargs['t_keyframe']
+        self.max_upsampling = len(kwargs['upsamp_list'])
+        self.upsampling_cnt = 0 
+        self.keyframe_upsampling = (torch.round(torch.exp(torch.linspace(np.log(np.floor(self.max_t / kwargs['t_keyframe'])), np.log(self.max_t), self.max_upsampling+1))).long()).tolist()[1:]
         super(TensorVMSplit, self).__init__(*args, **kwargs)
             
 
@@ -38,12 +38,12 @@ class TensoRFVideo(TensorVMSplit):
                 scale * torch.randn((1, n_component[i], gridSize[mat_id_1], gridSize[mat_id_0]))))  
             line_coef.append(
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], gridSize[vec_id], 1))))
+            """
             time_coeff.append(
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], gridSize[vec_id], 1))))
             """
             time_coeff.append(
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.max_t, 1)))) #TODO: Vec id shouldn't duplicate
-            """
 
         return torch.nn.ParameterList(plane_coef).to(device), torch.nn.ParameterList(line_coef).to(device), torch.nn.ParameterList(time_coeff).to(device)
 
@@ -105,20 +105,13 @@ class TensoRFVideo(TensorVMSplit):
             xyz_sampled, z_vals, ray_valid = self.sample_ray(rays_chunk[:, :3], viewdirs, is_train=is_train,N_samples=N_samples)
             dists = torch.cat((z_vals[:, 1:] - z_vals[:, :-1], torch.zeros_like(z_vals[:, :1])), dim=-1)
         viewdirs = viewdirs.view(-1, 1, 3).expand(xyz_sampled.shape)
-        #np_xyz = xyz_sampled.cpu().detach().numpy()
-        #print(np.max(np_xyz,(0,1)))
-        #print(np.min(np_xyz,(0,1)))
-        #pdb.set_trace()
 
-        #TODO: Pure - Alpha mask still in compatible yet.        
-        """
         if self.alphaMask is not None:
             alphas = self.alphaMask.sample_alpha(xyz_sampled[ray_valid])
             alpha_mask = alphas > 0
             ray_invalid = ~ray_valid
             ray_invalid[ray_valid] |= (~alpha_mask)
             ray_valid = ~ray_invalid
-        """
 
 
         sigma = torch.zeros(xyz_sampled.shape[:-1], device=xyz_sampled.device)
@@ -161,7 +154,10 @@ class TensoRFVideo(TensorVMSplit):
         return rgb_map, depth_map # rgb, sigma, alpha, weight, bg_weight
     
     def compute_densityfeature(self, xyz_sampled, time_sampled):
-
+        """
+        @params xyz_sampled #(n,3)
+        @params time_sampled #(n,), range[-1,1]
+        """
         # plane + line basis
         coordinate_plane = torch.stack((xyz_sampled[..., self.matMode[0]], xyz_sampled[..., self.matMode[1]], xyz_sampled[..., self.matMode[2]])).detach().view(3, -1, 1, 2)
         coordinate_line = torch.stack((xyz_sampled[..., self.vecMode[0]], xyz_sampled[..., self.vecMode[1]], xyz_sampled[..., self.vecMode[2]]))
@@ -208,32 +204,29 @@ class TensoRFVideo(TensorVMSplit):
 
     @torch.no_grad()
     def up_sampling_VM(self, plane_coef, line_coef, time_coef, res_target):
-
+        time_id = self.upsampling_cnt if self.upsampling_cnt < len(self.keyframe_upsampling) else len(self.keyframe_upsampling) - 1
         for i in range(len(self.vecMode)):
             vec_id = self.vecMode[i]
             mat_id_0, mat_id_1 = self.matMode[i]
-            plane_coef[i] = torch.nn.Parameter(
-                F.interpolate(plane_coef[i].data, size=(res_target[mat_id_1], res_target[mat_id_0]), mode='bilinear',
-                            align_corners=True))
-            line_coef[i] = torch.nn.Parameter(
-                F.interpolate(line_coef[i].data, size=(res_target[vec_id], 1), mode='bilinear', align_corners=True))
-            time_coef[i] = torch.nn.Parameter(
-                F.interpolate(time_coef[i].data, size=(res_target[vec_id], 1), mode='bilinear', align_corners=True))
+            plane_coef[i] = torch.nn.Parameter(F.interpolate(plane_coef[i].data, size=(res_target[mat_id_1], res_target[mat_id_0]), mode='bilinear',align_corners=True))
+            line_coef[i] = torch.nn.Parameter(F.interpolate(line_coef[i].data, size=(res_target[vec_id], 1), mode='bilinear', align_corners=True))
+            time_coef[i] = torch.nn.Parameter(F.interpolate(time_coef[i].data, size=(self.keyframe_upsampling[time_id], 1), mode='bilinear', align_corners=True))
 
 
         return plane_coef, line_coef, time_coef
 
     @torch.no_grad()
     def upsample_volume_grid(self, res_target):
-        self.app_plane, self.app_line = self.up_sampling_VM(self.app_plane, self.app_line, self.app_time, res_target)
-        self.density_plane, self.density_line = self.up_sampling_VM(self.density_plane, self.density_line, self.density_time, res_target)
+        self.app_plane, self.app_line, self.app_time = self.up_sampling_VM(self.app_plane, self.app_line, self.app_time, res_target)
+        self.density_plane, self.density_line, self.density_time = self.up_sampling_VM(self.density_plane, self.density_line, self.density_time, res_target)
+        self.upsampling_cnt += 1
 
         self.update_stepSize(res_target)
         printlog(f'upsamping to {res_target}')
     
     @torch.no_grad()
     def updateAlphaMask(self, gridSize=(200,200,200)):
-
+        # we cannot create AlphaMask (OccupencyGrid) 
         total_voxels = gridSize[0] * gridSize[1] * gridSize[2]
 
         samples = torch.stack(torch.meshgrid(
@@ -245,8 +238,10 @@ class TensoRFVideo(TensorVMSplit):
 
         dense_xyz = dense_xyz.transpose(0,2).contiguous()
         alpha = torch.zeros_like(dense_xyz[...,0])
-        for i in range(gridSize[2]):
-            alpha[i] = self.compute_alpha(dense_xyz[i].view(-1,3), self.distance_scale*self.aabbDiag).view((gridSize[1], gridSize[0]))
+        for t in torch.linspace(-1,1, self.max_t):
+            time_sampled = t.expand(dense_xyz[0].view(-1,3).shape[0]).to(dense_xyz.device)
+            for i in range(gridSize[2]):
+                alpha[i] += self.compute_alpha(dense_xyz[i].view(-1,3), time_sampled, self.distance_scale*self.aabbDiag).view((gridSize[1], gridSize[0]))
         alpha = alpha.clamp(0,1)[None,None]
 
 
@@ -268,7 +263,7 @@ class TensoRFVideo(TensorVMSplit):
         print(f"bbox: {xyz_min, xyz_max} alpha rest %%%f"%(total/total_voxels*100))
         return new_aabb
 
-    def compute_alpha(self, xyz_locs, length=1):
+    def compute_alpha(self, xyz_locs, time_sampled, length=1):
 
         if self.alphaMask is not None:
             alphas = self.alphaMask.sample_alpha(xyz_locs)
@@ -281,7 +276,7 @@ class TensoRFVideo(TensorVMSplit):
 
         if alpha_mask.any():
             xyz_sampled = self.normalize_coord(xyz_locs[alpha_mask])
-            sigma_feature = self.compute_densityfeature(xyz_sampled)
+            sigma_feature = self.compute_densityfeature(xyz_sampled, time_sampled[alpha_mask])
             validsigma = self.feature2density(sigma_feature)
             sigma[alpha_mask] = validsigma
         

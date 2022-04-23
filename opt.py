@@ -143,6 +143,7 @@ def config_parser(cmd=None):
     parser.add_argument('--hold_every', help="number of holdout ever x camera (default: 8, matched LLFF)", type=int, default = 8)
     parser.add_argument('--visualize_tensor', type=int, default = 1)
     parser.add_argument('--data_parallel', type=int, default = 0)
+    parser.add_argument('--t_keyframe',  help="number of keyframe to use as initital training", type=int, default = 10)
 
 
 

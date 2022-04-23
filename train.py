@@ -172,6 +172,8 @@ def reconstruction(args):
         ])    
         if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
             kwargs["max_t"] = args.num_frames 
+            kwargs["t_keyframe"] = args.t_keyframe
+            kwargs["upsamp_list"] = args.upsamp_list
         tensorf = eval(args.model_name)(**kwargs)
     if args.model_name in ['TensorSph']:
         tensorf.set_origin(train_dataset.origin,train_dataset.sph_box,train_dataset.sph_frontback)
@@ -189,8 +191,7 @@ def reconstruction(args):
 
 
     #linear in logrithmic space
-    N_voxel_list = (torch.round(torch.exp(torch.linspace(np.log(args.N_voxel_init), np.log(args.N_voxel_final), len(upsamp_list)+1))).long()).tolist()[1:]
-
+    N_voxel_list = (torch.round(torch.exp(torch.linspace(np.log(args.N_voxel_init), np.log(args.N_voxel_final), len(upsamp_list)+1))).long()).tolist()[1:]      
 
     torch.cuda.empty_cache()
     PSNRs,PSNRs_test = [],[0]

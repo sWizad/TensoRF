@@ -8,6 +8,9 @@ from torchvision import transforms as T
 from scipy.spatial.transform import Rotation, Slerp
 import pdb
 from tqdm.auto import tqdm
+from multiprocessing import Pool 
+from functools import partial
+from skimage import transform, io, img_as_float
 
 from .ray_utils import *
 
@@ -244,26 +247,32 @@ class MetaVideoDataset(Dataset):
         img_list = i_test if self.split != 'train' else list(set(np.arange(num_cameras)) - set(i_test))
         self.all_rays = []
         self.all_rgbs = []
+ 
+
         missing_view = 0
-        for i, view in enumerate(tqdm(img_list)):
+        image_paths = []
+        for i, view in enumerate(img_list):
             if not os.path.exists(os.path.join(self.root_dir,f'frames/c{view:02d}')): 
                 missing_view += 1
                 continue #skip missing input view
-            #c2w = torch.FloatTensor(self.poses[i])
             c2w = torch.FloatTensor(self.poses[view - missing_view])
             rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
             rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
             # viewdir = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
-        
             for t in range(self.max_t):
-                image_path = os.path.join(self.root_dir,f'frames/c{view:02d}/f{t+1:04d}.png') #change to view instead, sometimes i is not consequtive [i_test]
-                img = Image.open(image_path).convert('RGB')
-                if self.downsample != 1.0:
-                    img = img.resize(self.img_wh, Image.LANCZOS)
-                img = self.transform(img)  # (3, h, w)
-                img = img.view(3, -1).permute(1, 0)  # (h*w, 3) RGB
-                self.all_rgbs += [img]
+                image_paths += [os.path.join(self.root_dir,f'frames/c{view:02d}/f{t+1:04d}.png')] #change to view instead, sometimes i is not consequtive [i_test]
                 self.all_rays += [torch.cat([rays_o, rays_d, t*torch.ones_like(rays_o[...,0:1])], 1)]  # (h*w, 7) 
+        
+        # pararell loading and resizeing files
+        print("reading {} images files...".format(self.split))
+        image_preprocess_fn = partial(image_preprocess, self.downsample, self.img_wh)
+        with Pool(os.cpu_count()) as p:
+            self.all_rgbs = list(tqdm(p.imap(image_preprocess_fn, image_paths), total=len(image_paths)))
+
+        # this conversation should in image_preprocess. however, it freeze the process for no reason, so i doing it in main thread instead
+        for i in range(len(self.all_rgbs)):
+            self.all_rgbs[i] = self.transform(self.all_rgbs[i]).view(3, -1).permute(1, 0)  # (h*w, 3) RGB
+
 
         if not self.is_stack:
             self.all_rays = torch.cat(self.all_rays, 0) # (len(self.meta['frames])*h*w, 3)
@@ -369,3 +378,10 @@ class MetaVideoDataset(Dataset):
                   'rgbs': self.all_rgbs[idx]}
 
         return sample
+
+def image_preprocess(downsample, img_wh, image_path):
+    img = Image.open(image_path).convert('RGB')
+    if downsample != 1.0:
+        img = img.resize(img_wh, Image.LANCZOS)
+    return img
+
