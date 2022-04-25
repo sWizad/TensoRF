@@ -144,7 +144,9 @@ def config_parser(cmd=None):
     parser.add_argument('--visualize_tensor', type=int, default = 1)
     parser.add_argument('--data_parallel', type=int, default = 0)
     parser.add_argument('--t_keyframe',  help="number of keyframe to use as initital training", type=int, default = 10)
-
+    parser.add_argument('--median_ratio',  help="ratio for active median sampling [0.0-1.0]", type=float, default = -1)
+    parser.add_argument('--temporal_ratio',  help="ratio for active temporal sampling [0.0-1.0]", type=float, default = -1)
+    parser.add_argument('--dataloader_thread_ratio',  help="thread that multiply with os.cpu_count for dataloader  [0.0-1.0]", type=float, default = 1)
 
 
     if cmd is not None:

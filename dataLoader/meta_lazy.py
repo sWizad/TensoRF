@@ -15,18 +15,25 @@ from multiprocessing import Pool
 from functools import partial
 from skimage import img_as_float, img_as_ubyte, io
 import time
+from .meta import center_poses, normalize, get_spiral, average_poses
+from .ray_utils import get_ray_directions_blender, get_rays, ndc_rays_blender
+#from matplotlib import pyplot as plt
 
 
 class MetaVideoLazyDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, **kwargs):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, num_rays=4096, **kwargs):
         print('MetaVideoLazyDataset')
         #TODO: need to config proper variable
         # initialize variable 
         self.root_dir = datadir
         self.downsample = downsample
+        self.num_rays = num_rays
 
+        #importance sampling paramter
+        self.geman_gamma = 1e-3
+        self.temporal_alpha = 0.1
+        
         self.prepare_memmap()
-
         self.ndc_ray = ndc_ray
         self.split = split
         self.hold_every = hold_every
@@ -49,19 +56,33 @@ class MetaVideoLazyDataset(Dataset):
         self.origin = np.array([[0],[0],[0]])
         self.sph_box = [-1, 1]
         self.sph_frontback = [1, 6]
+        self.is_median = False 
+        self.is_temporal =False
+        self.is_sampling = self.split == 'train'
 
     def prepare_memmap(self):
         # copy or create memmap if not existed.
         # we use memmap instead of the original dataset for faster file seeking
-        if not os.path.exists(os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))) or not os.path.exists(os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample))):
-            print("#TODO: NEED TO BE REMOVE")
-            print("EXIT: SAFEGUARD BEFORE MEMMAP")
-            exit()
+        median_file = os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample))
+        memmap_file = os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))
+        json_file = os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample))
+        if not os.path.exists(memmap_file) or not os.path.exists(json_file):
             self.create_memmap()
-        if not os.path.exists(os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample))):
-            self.create_median()
-        print("ANOTHER SAFEGUARD")
-        exit()
+        if not os.path.exists(median_file):
+            self.create_median(median_file)
+        with open(json_file, 'r') as f:
+            json_data = json.load(f)
+            self.memmap_cams = len(json_data['video'])
+            self.memmap_height = json_data['video'][0]['height']
+            self.memmap_width = json_data['video'][0]['width']
+            self.memmap_frames = json_data['video'][0]['num_frames']
+        self.img_medians = np.load(median_file)
+        self.img_medians = self.img_medians / 255.0 #scale to [0,1]
+        self.memmap_rgbs =  np.memmap(memmap_file, dtype=np.ubyte, mode='r', offset=0, shape=(self.memmap_cams*self.memmap_frames*self.memmap_height*self.memmap_width,3), order='C') #flat line of
+
+        return 
+        # TODO: support proper over-network storage by copyinh to local drive / scratch first 
+
         # copy memmap to local instead of using Network attach storage
         hostname = socket.gethostname()
         cache_path = None
@@ -85,9 +106,7 @@ class MetaVideoLazyDataset(Dataset):
         fn = partial(median_process, self.root_dir, self.downsample, len(meta['video']))
         with Pool(num_threads) as p: 
             images = p.map(fn, enumerate(meta['video']))
-            np.save(os.path.join('median_{}.npy'.format(self.downsample)), np.concatenate([img[None] for img in images],axis=0))
-        print('======= break XD =====')
-        exit()
+            np.save(os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample)), np.concatenate([img[None] for img in images],axis=0))
  
     def create_memmap(self):
         print('creating memmap...')
@@ -109,7 +128,6 @@ class MetaVideoLazyDataset(Dataset):
         memfile_path = os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))     
         create_memfile(memfile_path, (num_inputview*num_frames*height*width,3))
         with Pool(num_threads) as p:
-            a = list(enumerate(video_files[:2]))          
             video_metadata = p.map(fn, list(enumerate(video_files)))
             with open(os.path.join(self.root_dir, "video_meta_{}.json".format(self.downsample)), 'w') as f:
                 json.dump({
@@ -162,8 +180,14 @@ class MetaVideoLazyDataset(Dataset):
 
         average_pose = average_poses(self.poses)
         dists = np.sum(np.square(average_pose[:3, 3] - self.poses[:, :3, 3]), -1)
-        i_test = np.arange(0, self.poses.shape[0], self.hold_every)  # [np.argmin(dists)]
-        img_list = i_test if self.split != 'train' else list(set(np.arange(len(self.poses))) - set(i_test))
+        video_files = sorted([f for f in os.listdir(self.root_dir) if f.endswith(".mp4")])
+        img_list = [int(v.split('.')[0][3:]) for v in video_files]
+        i_test = img_list[::self.hold_every]
+        i_train = list(set(img_list) - set(i_test))
+
+        self.cam_ids = i_train if self.split == 'train' else i_test
+        self.memmap_ids = [img_list.index(v) for v in self.cam_ids]
+
         """
         self.all_rays = []
         self.all_rgbs = []
@@ -199,15 +223,70 @@ class MetaVideoLazyDataset(Dataset):
 
     def __len__(self):
         # @return total number of pixel
-        # we can fine all pixel by count height*width*num_of_frame*num_video
-        return len(self.all_rgbs)
+        # we use per-image sample instead 
+        return self.max_t *len(self.cam_ids)
 
     def __getitem__(self, idx):
+        # idx can be tensor, int, list of inmt
+        if torch.is_tensor(idx):
+            idx = idx.numpy()
+        if isinstance(idx, list):
+            idx = np.array(idx)
+        memmap_id = self.memmap_ids[idx // self.max_t]
+        frame_id  = idx % self.max_t
+        memmap_frameoffset = self.memmap_height*self.memmap_width     
+        memmap_start = memmap_frameoffset * (memmap_id * self.memmap_frames + frame_id)
+        memmap_stop =  memmap_frameoffset * (memmap_id * self.memmap_frames + frame_id + 1)
 
-        sample = {'rays': self.all_rays[idx],
-                  'rgbs': self.all_rgbs[idx]}
+        rgb = self.memmap_rgbs[memmap_start: memmap_stop] / 255.0
+        if self.is_sampling:
+            if self.is_median:
+                weights = self.get_median_weights(rgb, memmap_id)
+            elif self.is_temporal:
+                weights = self.get_temporal_weights(rgb, memmap_id, frame_id)
+            else: 
+                weights = np.ones((len(rgb),)) / len(rgb) 
 
-        return sample
+            inds = np.random.choice(len(weights), size=self.num_rays, replace=False, p=weights)
+            target_rgb = rgb[inds]
+            inds = torch.from_numpy(inds)
+            directions = self.directions.view(-1,3)[inds][None]
+        else:
+            directions = self.directions.view(-1,3)[None]
+            target_rgb = rgb
+        W, H = self.img_wh
+        c2w = torch.FloatTensor(self.poses[memmap_id])
+        rays_o, rays_d = get_rays(directions, c2w)  # both (h*w, 3)
+        rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
+        rays = torch.cat([rays_o, rays_d, frame_id*torch.ones_like(rays_o[...,0:1])], 1)
+
+        #sample = {'rays': self.all_rays[idx],'rgbs': self.all_rgbs[idx]}
+        return {
+            'rays': rays.float(),
+            'rgbs': torch.from_numpy(target_rgb).float()
+        }
+
+    def get_median_weights(self, rgb, memmap_id):
+        median = self.img_medians[memmap_id]
+        weight_isg = 1.0 / 3.0 * np.sum(np.abs(geman_mclure(rgb - median, self.geman_gamma)), axis=-1) # each pixel are rate [0,1]
+        # scale to probability
+        weight_isg = weight_isg / np.sum(weight_isg)
+        return weight_isg
+
+
+    def get_temporal_weights(self,  rgb, memmap_id, frame_id):
+        # randomly select frame in 25 frame distance
+        bound = np.clip(np.array([frame_id-25, frame_id+25]), 0, self.max_t)
+        temporal_id = np.random.randint(bound[0], bound[1])
+        memmap_frameoffset = self.memmap_height*self.memmap_width     
+        memmap_start = memmap_frameoffset * (memmap_id * self.memmap_frames + temporal_id)
+        memmap_stop =  memmap_frameoffset * (memmap_id * self.memmap_frames + temporal_id + 1)
+        temporal_rgb = self.memmap_rgbs[memmap_start: memmap_stop] / 255.0
+        weight_ist = np.clip(1.0 / 3.0 * np.sum(np.abs(rgb - temporal_rgb),axis=-1), self.temporal_alpha, np.finfo('float64').max)
+        weight_ist = weight_ist / np.sum(weight_ist)
+        return weight_ist
+
+        
 
 def get_video_metadata(file):
     #cmd = 'ffprobe -v error -select_streams v -i {} -show_entries stream=width,height  -of json'.format(file)
@@ -288,3 +367,6 @@ def create_memfile(f,s):
     if not os.path.exists(f):
         fp = np.memmap(f, dtype=np.ubyte, mode='w+', offset=0, shape=s, order='C') #flat line of
             
+
+def geman_mclure(x,gamma):
+    return x ** 2 / (x**2 + gamma)

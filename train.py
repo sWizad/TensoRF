@@ -59,6 +59,8 @@ def render_test(args):
     kwargs.update({'device': device})
     if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
         kwargs.update({'max_t': args.num_frames})
+        kwargs.update({'t_keyframe': args.t_keyframe})
+        kwargs.update({'upsamp_list': args.upsamp_list})
     tensorf = eval(args.model_name)(**kwargs)
     tensorf.load(ckpt)
     #pdb.set_trace()
