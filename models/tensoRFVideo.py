@@ -22,12 +22,12 @@ class TensoRFVideo(TensorVMSplit):
         self.upsampling_cnt = 0 
         self.keyframe_upsampling = (torch.round(torch.exp(torch.linspace(np.log(np.floor(self.max_t / kwargs['t_keyframe'])), np.log(self.max_t), self.max_upsampling+1))).long()).tolist()[1:]
         super(TensorVMSplit, self).__init__(*args, **kwargs)
-            
 
     def init_svd_volume(self, res, device):
         self.density_plane, self.density_line, self.density_time = self.init_one_svd(self.density_n_comp, self.gridSize, 0.1, device)
         self.app_plane, self.app_line, self.app_time = self.init_one_svd(self.app_n_comp, self.gridSize, 0.1, device)
         self.basis_mat = torch.nn.Linear(sum(self.app_n_comp), self.app_dim, bias=False).to(device)
+
 
     def init_one_svd(self, n_component, gridSize, scale, device):
         plane_coef, line_coef, time_coeff = [], [], []
@@ -44,14 +44,14 @@ class TensoRFVideo(TensorVMSplit):
             """
             time_coeff.append(
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.max_t, 1)))) #TODO: Vec id shouldn't duplicate
-
         return torch.nn.ParameterList(plane_coef).to(device), torch.nn.ParameterList(line_coef).to(device), torch.nn.ParameterList(time_coeff).to(device)
 
     
     def get_optparam_groups(self, lr_init_spatialxyz = 0.02, lr_init_network = 0.001):
         grad_vars = [{'params': self.density_line, 'lr': lr_init_spatialxyz}, {'params': self.density_plane, 'lr': lr_init_spatialxyz}, {'params': self.density_time, 'lr': lr_init_spatialxyz},
                      {'params': self.app_line, 'lr': lr_init_spatialxyz}, {'params': self.app_plane, 'lr': lr_init_spatialxyz}, {'params': self.app_time, 'lr': lr_init_spatialxyz},
-                         {'params': self.basis_mat.parameters(), 'lr':lr_init_network}]
+                         {'params': self.basis_mat.parameters(), 'lr':lr_init_network},
+                          ]
         if isinstance(self.renderModule, torch.nn.Module):
             grad_vars += [{'params':self.renderModule.parameters(), 'lr':lr_init_network}]
         return grad_vars
@@ -124,7 +124,6 @@ class TensoRFVideo(TensorVMSplit):
         if ray_valid.any():
             xyz_sampled = self.normalize_coord(xyz_sampled)
             sigma_feature = self.compute_densityfeature(xyz_sampled[ray_valid], time_sampled[ray_valid])
-
             validsigma = self.feature2density(sigma_feature)
             sigma[ray_valid] = validsigma
 
@@ -285,6 +284,22 @@ class TensoRFVideo(TensorVMSplit):
 
         return alpha
 
+    def normalize_coord(self, xyz_sampled):
+        aabb = self.aabb.to(xyz_sampled.device)
+        invaabbSize = self.invaabbSize.to(xyz_sampled.device)
+        return (xyz_sampled-aabb[0]) * invaabbSize - 1
+    
+    def sample_ray_ndc(self, rays_o, rays_d, is_train=True, N_samples=-1):
+        N_samples = N_samples if N_samples > 0 else self.nSamples
+        near, far = self.near_far
+        interpx = torch.linspace(near, far, N_samples).unsqueeze(0).to(rays_o)
+        if is_train:
+            interpx += torch.rand_like(interpx).to(rays_o) * ((far - near) / N_samples)
+
+        rays_pts = rays_o[..., None, :] + rays_d[..., None, :] * interpx[..., None]
+        aabb = self.aabb.to(rays_pts.device)
+        mask_outbbox = ((aabb[0] > rays_pts) | (rays_pts > aabb[1])).any(dim=-1)
+        return rays_pts, interpx, ~mask_outbbox
 
 class TensoRFVideoStaticColor(TensoRFVideo):
     def init_svd_volume(self, res, device):

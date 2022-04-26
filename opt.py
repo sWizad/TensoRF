@@ -143,12 +143,13 @@ def config_parser(cmd=None):
     parser.add_argument('--hold_every', help="number of holdout ever x camera (default: 8, matched LLFF)", type=int, default = 8)
     parser.add_argument('--visualize_tensor', type=int, default = 1)
     parser.add_argument('--data_parallel', type=int, default = 0)
-    parser.add_argument('--t_keyframe',  help="number of keyframe to use as initital training", type=int, default = 10)
     parser.add_argument('--median_ratio',  help="ratio for active median sampling [0.0-1.0]", type=float, default = -1)
     parser.add_argument('--temporal_ratio',  help="ratio for active temporal sampling [0.0-1.0]", type=float, default = -1)
     parser.add_argument('--dataloader_thread_ratio',  help="thread that multiply with os.cpu_count for dataloader  [0.0-1.0]", type=float, default = 1)
-
-
+    parser.add_argument('--t_keyframe',  help="number of keyframe to use as initital training", type=int, default = 10)
+    parser.add_argument('--keyframe_iters',  help="use keyframe_training for n step, (default: -1, not using)", type=int, default = -1)
+    parser.add_argument('--median_keyframe',  help="use median on keyframe training", type=int, default = 1)
+    parser.add_argument("--render_dynerf", help="render in dynerf style (all frame if below than 60, otherwise render every 10 frame)", type=int, default=0)
     if cmd is not None:
         return parser.parse_args(cmd)
     else:

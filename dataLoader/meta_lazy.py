@@ -21,27 +21,33 @@ from .ray_utils import get_ray_directions_blender, get_rays, ndc_rays_blender
 
 
 class MetaVideoLazyDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, num_rays=4096, **kwargs):
+    def __init__(self, datadir, split='train', downsample=4, is_stack=False, hold_every=8, ndc_ray=False, max_t=1, num_rays=4096, hold_every_frame=1, psudo_length=-1, **kwargs):
+        
         print('MetaVideoLazyDataset')
         #TODO: need to config proper variable
         # initialize variable 
         self.root_dir = datadir
         self.downsample = downsample
         self.num_rays = num_rays
+        self.psudo_length = psudo_length #psudo_length use to avoid costly re-intialize dataloader class
 
         #importance sampling paramter
-        self.geman_gamma = 1e-3
+        self.geman_gamma = 1e-3 if hold_every_frame > 0 else 2e-2
         self.temporal_alpha = 0.1
-        
+
         self.prepare_memmap()
+        
         self.ndc_ray = ndc_ray
         self.split = split
         self.hold_every = hold_every
+        self.hold_every_frame = hold_every_frame
         self.is_stack = is_stack
         self.define_transforms()
         self.max_t = max_t
         self.blender2opencv = np.eye(4)#np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        start_time = time.time()
         self.read_meta()
+        
         self.white_bg = False
         self.near_far = [np.min(self.near_fars[:,0]),np.max(self.near_fars[:,1])]
         #         self.near_far = [np.min(self.near_fars[:,0]),np.max(self.near_fars[:,1])]
@@ -59,11 +65,13 @@ class MetaVideoLazyDataset(Dataset):
         self.is_median = False 
         self.is_temporal =False
         self.is_sampling = self.split == 'train'
+        
 
     def prepare_memmap(self):
         # copy or create memmap if not existed.
         # we use memmap instead of the original dataset for faster file seeking
-        median_file = os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample))
+
+        median_file = os.path.join(self.root_dir,'median_{}.memmap'.format(self.downsample))
         memmap_file = os.path.join(self.root_dir,'rgb_{}.memmap'.format(self.downsample))
         json_file = os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample))
         if not os.path.exists(memmap_file) or not os.path.exists(json_file):
@@ -76,10 +84,11 @@ class MetaVideoLazyDataset(Dataset):
             self.memmap_height = json_data['video'][0]['height']
             self.memmap_width = json_data['video'][0]['width']
             self.memmap_frames = json_data['video'][0]['num_frames']
-        self.img_medians = np.load(median_file)
-        self.img_medians = self.img_medians / 255.0 #scale to [0,1]
-        self.memmap_rgbs =  np.memmap(memmap_file, dtype=np.ubyte, mode='r', offset=0, shape=(self.memmap_cams*self.memmap_frames*self.memmap_height*self.memmap_width,3), order='C') #flat line of
 
+       
+        self.img_medians =  np.memmap(median_file, dtype=np.ubyte, mode='r', offset=0, shape=(self.memmap_cams*self.memmap_height*self.memmap_width,3), order='C') #flat line of
+        self.memmap_rgbs =  np.memmap(memmap_file, dtype=np.ubyte, mode='r', offset=0, shape=(self.memmap_cams*self.memmap_frames*self.memmap_height*self.memmap_width,3), order='C') #flat line of
+       
         return 
         # TODO: support proper over-network storage by copyinh to local drive / scratch first 
 
@@ -97,7 +106,7 @@ class MetaVideoLazyDataset(Dataset):
             shutil.copy2(memmap_datapath, dst_path)
             memmap_datapath = dst_path
 
-    def create_median(self):
+    def create_median(self, median_file):
         print('creating median image...')
         start_time = time.time()
         with open(os.path.join(self.root_dir,'video_meta_{}.json'.format(self.downsample)), 'r') as f:
@@ -106,7 +115,9 @@ class MetaVideoLazyDataset(Dataset):
         fn = partial(median_process, self.root_dir, self.downsample, len(meta['video']))
         with Pool(num_threads) as p: 
             images = p.map(fn, enumerate(meta['video']))
-            np.save(os.path.join(self.root_dir,'median_{}.npy'.format(self.downsample)), np.concatenate([img[None] for img in images],axis=0))
+            images = np.concatenate([img[None] for img in images],axis=0).reshape(-1,3)
+            img_medians = np.memmap(median_file, dtype=np.ubyte, mode='w+', offset=0, shape=(images.shape[0],3), order='C') #flat line of
+            img_medians.flush()
  
     def create_memmap(self):
         print('creating memmap...')
@@ -188,43 +199,16 @@ class MetaVideoLazyDataset(Dataset):
         self.cam_ids = i_train if self.split == 'train' else i_test
         self.memmap_ids = [img_list.index(v) for v in self.cam_ids]
 
-        """
-        self.all_rays = []
-        self.all_rgbs = []
-
-        print("Loading cameras...")
-        for i, view in enumerate(tqdm(img_list)):
-            c2w = torch.FloatTensor(self.poses[i])
-            rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
-            rays_o, rays_d = ndc_rays_blender(H, W, self.focal[0], 1.0, rays_o, rays_d)
-            # viewdir = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
-        
-            for t in range(self.max_t):
-                image_path = os.path.join(self.root_dir,f'frames/c{view:02d}/f{t+1:04d}.png') #change to view instead, sometimes i is not consequtive [i_test]
-
-                img = Image.open(image_path).convert('RGB')
-                if self.downsample != 1.0:
-                    img = img.resize(self.img_wh, Image.LANCZOS)
-                img = self.transform(img)  # (3, h, w)
-                img = img.view(3, -1).permute(1, 0)  # (h*w, 3) RGB
-                self.all_rgbs += [img]
-                self.all_rays += [torch.cat([rays_o, rays_d, t*torch.ones_like(rays_o[...,0:1])], 1)]  # (h*w, 7) 
-
-        if not self.is_stack:
-            self.all_rays = torch.cat(self.all_rays, 0) # (len(self.meta['frames])*h*w, 3)
-            self.all_rgbs = torch.cat(self.all_rgbs, 0) # (len(self.meta['frames])*h*w,3)
-        else:
-            self.all_rays = torch.stack(self.all_rays, 0)   # (len(self.meta['frames]),h,w, 3)
-            self.all_rgbs = torch.stack(self.all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
-        """
-
     def define_transforms(self):
         self.transform = T.ToTensor()
 
     def __len__(self):
         # @return total number of pixel
         # we use per-image sample instead 
-        return self.max_t *len(self.cam_ids)
+        if self.psudo_length != -1:
+            return self.psudo_length 
+        else:
+            return (self.max_t // self.hold_every_frame) *len(self.cam_ids)
 
     def __getitem__(self, idx):
         # idx can be tensor, int, list of inmt
@@ -232,8 +216,11 @@ class MetaVideoLazyDataset(Dataset):
             idx = idx.numpy()
         if isinstance(idx, list):
             idx = np.array(idx)
-        memmap_id = self.memmap_ids[idx // self.max_t]
-        frame_id  = idx % self.max_t
+        
+        row = self.max_t // self.hold_every_frame # in case frame_skip validation
+        idx = idx % (row *len(self.cam_ids)) #remove psudo length (if enable)
+        memmap_id = self.memmap_ids[idx // row]
+        frame_id  = (idx % row) * self.hold_every_frame
         memmap_frameoffset = self.memmap_height*self.memmap_width     
         memmap_start = memmap_frameoffset * (memmap_id * self.memmap_frames + frame_id)
         memmap_stop =  memmap_frameoffset * (memmap_id * self.memmap_frames + frame_id + 1)
@@ -267,6 +254,9 @@ class MetaVideoLazyDataset(Dataset):
         }
 
     def get_median_weights(self, rgb, memmap_id):
+        start_median = rgb.shape[0] * memmap_id
+        stop_median = rgb.shape[0] * (memmap_id+1)
+        self.img_medians[start_median: stop_median]
         median = self.img_medians[memmap_id]
         weight_isg = 1.0 / 3.0 * np.sum(np.abs(geman_mclure(rgb - median, self.geman_gamma)), axis=-1) # each pixel are rate [0,1]
         # scale to probability
