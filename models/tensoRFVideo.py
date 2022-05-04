@@ -16,11 +16,17 @@ class TensoRFVideo(TensorVMSplit):
     """
     def __init__(self, *args, **kwargs):
         print("Model: TensoRFVideo")
-        self.max_t = kwargs['max_t']
+        self.max_t = kwargs['max_t'] if 'max_t' in kwargs else 1
         #self.t_keyframe = kwargs['t_keyframe']
         self.max_upsampling = len(kwargs['upsamp_list'])
         self.upsampling_cnt = 0 
-        self.keyframe_upsampling = (torch.round(torch.exp(torch.linspace(np.log(np.floor(self.max_t / kwargs['t_keyframe'])), np.log(self.max_t), self.max_upsampling+1))).long()).tolist()[1:]
+        if self.max_t > kwargs['t_keyframe']:
+            self.keyframe_upsampling = (torch.round(torch.exp(torch.linspace(np.log(np.floor(self.max_t / kwargs['t_keyframe'])), np.log(self.max_t), self.max_upsampling+1))).long()).tolist()
+            self.keyframe_initial = self.keyframe_upsampling[0]
+            self.keyframe_upsampling = self.keyframe_upsampling[1:]
+        else:
+            self.keyframe_initial = self.max_t
+            self.keyframe_upsampling = [self.max_t]
         super(TensorVMSplit, self).__init__(*args, **kwargs)
 
     def init_svd_volume(self, res, device):
@@ -43,7 +49,7 @@ class TensoRFVideo(TensorVMSplit):
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], gridSize[vec_id], 1))))
             """
             time_coeff.append(
-                torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.max_t, 1)))) #TODO: Vec id shouldn't duplicate
+                torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.keyframe_initial, 1)))) #TODO: Vec id shouldn't duplicate
         return torch.nn.ParameterList(plane_coef).to(device), torch.nn.ParameterList(line_coef).to(device), torch.nn.ParameterList(time_coeff).to(device)
 
     

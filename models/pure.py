@@ -8,3 +8,4 @@ from .tensoRFVideo import TensoRFVideo, TensoRFVideoStaticColor
 from .NeRF import NeRF
 from .NeRFVideo import NeRFVideo
 from .Neural3DVideo import Neural3DVideo
+from .SparseHashMLP import SparseHashMLP

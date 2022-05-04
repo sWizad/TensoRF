@@ -26,7 +26,7 @@ def config_parser(cmd=None):
     parser.add_argument("--n_iters", type=int, default=30000)
 
     parser.add_argument('--dataset_name', type=str, default='blender',
-                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy', 'meta_dynamic'])
+                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy', 'meta_dynamic', 'meta_crop'])
 
 
     # training options
@@ -150,6 +150,9 @@ def config_parser(cmd=None):
     parser.add_argument('--keyframe_iters',  help="use keyframe_training for n step, (default: -1, not using)", type=int, default = -1)
     parser.add_argument('--median_keyframe',  help="use median on keyframe training", type=int, default = 1)
     parser.add_argument("--render_dynerf", help="render in dynerf style (all frame if below than 60, otherwise render every 10 frame)", type=int, default=0)
+    parser.add_argument("--render_firstframe", help="render the first frame", type=int, default=0)
+
+    
     if cmd is not None:
         return parser.parse_args(cmd)
     else:

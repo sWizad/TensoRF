@@ -7,7 +7,7 @@ from .tensorBase import TensorBase, raw2alpha, positional_encoding
 
 class NeRFVideo(TensorBase):
     def __init__(self, *args, **kwargs):
-        self.max_t = kwargs['max_t']
+        self.max_t = kwargs['max_t'] if 'max_t' in kwargs else 1
         self.nerf_hidden, self.pos_pe, self.view_pe = kwargs['featureC'], kwargs['pos_pe'], kwargs['view_pe']
         print("NeRFVideo: A modification version of NeRF to handle video")
         super().__init__(*args, **kwargs) #initail super class

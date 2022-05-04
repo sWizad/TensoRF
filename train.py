@@ -253,6 +253,7 @@ def reconstruction(args):
                     total_loss = total_loss + loss_tv
                     summary_writer.add_scalar('train/reg_tv_app', loss_tv.detach().item(), global_step=iteration)
         if args.grad_scaler:
+            optimizer.zero_grad()
             scaler.scale(total_loss).backward()
             scaler.step(optimizer)
             scaler.update()

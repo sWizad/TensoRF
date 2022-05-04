@@ -23,6 +23,7 @@ def main():
     os.makedirs(TARGET_DIR, exist_ok=True, mode=0o777)
     os.makedirs(camera_dir, exist_ok=True, mode=0o777)
     os.makedirs(image_dir, exist_ok=True, mode=0o777)
+    """
     cam_info = [(cam, frame) for cam in range(NUM_CAMS) for frame in range(NUM_ACTUAL_FRAME)]
     # extract first 300 images 
     with Pool(16) as p:
@@ -32,11 +33,13 @@ def main():
                 pbar.update()
     create_dataset_json()
     create_metadata_json()
+    """
     create_camera()
 
 def create_camera():
     poses_bounds = np.load(os.path.join(SOURCE_DIR, 'poses_bounds.npy'))
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)  # (N_images, 3, 5)
+    poses_centered = np.load(os.path.join(SOURCE_DIR, 'center_poses.npy'))
     near_fars = poses_bounds[:, -2:]
     for cam in tqdm(range(NUM_CAMS)):
         hwf = poses[cam,:,4]
@@ -46,9 +49,9 @@ def create_camera():
                 WIDTH,
                 HEIGHT
             ],
-            "orientation": poses[cam,:3,:3].tolist(),
+            "orientation": poses_centered[cam,:3,:3].tolist(),
             "pixel_aspect_ratio": 1.0,
-            "position": poses[cam,:3,3].tolist(),
+            "position": poses_centered[cam,:3,3].tolist(),
             "principal_point": [
                 WIDTH / 2.0,
                 HEIGHT / 2.0

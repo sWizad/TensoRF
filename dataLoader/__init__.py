@@ -7,7 +7,7 @@ from .deepvv import DeepvvDataset
 from .meta import MetaVideoDataset
 from .meta_lazy import MetaVideoLazyDataset
 from .meta_dynamic import MetaDynamicDataset
-
+from .meta_crop import MetaCropVideoDataset
 
 dataset_dict = {'blender': BlenderDataset,
                'llff':LLFFDataset,
@@ -17,4 +17,5 @@ dataset_dict = {'blender': BlenderDataset,
                'deepvv':DeepvvDataset,
                'meta':MetaVideoDataset,
                'meta_lazy': MetaVideoLazyDataset,
-               'meta_dynamic': MetaDynamicDataset}
+               'meta_dynamic': MetaDynamicDataset,
+               'meta_crop': MetaCropVideoDataset}

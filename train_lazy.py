@@ -100,8 +100,128 @@ def evaluation_lazy(test_dataset,tensorf, args, renderer, savePath=None, N_vis=5
     return PSNRs
 
 @torch.no_grad()
+def evaluation_path_lazy(test_dataset,tensorf, c2ws, renderer, savePath=None, N_vis=5, prtx='', N_samples=-1,
+                    white_bg=False, ndc_ray=False, compute_extra_metrics=True, device='cuda'):
+    PSNRs, rgb_maps, depth_maps = [], [], []
+    ssims,l_alex,l_vgg=[],[],[]
+    os.makedirs(savePath, exist_ok=True)
+    os.makedirs(savePath+"/img/rgbd", exist_ok=True)
+
+    try:
+        tqdm._instances.clear()
+    except Exception:
+        pass
+
+    near_far = test_dataset.near_far
+    for idx, c2w in enumerate(tqdm(c2ws)):
+
+        W, H = test_dataset.img_wh
+
+        c2w = torch.FloatTensor(c2w)
+        rays_o, rays_d = get_rays(test_dataset.directions, c2w)  # both (h*w, 3)
+        if ndc_ray:
+            rays_o, rays_d = ndc_rays_blender(H, W, test_dataset.focal[0], 1.0, rays_o, rays_d)
+        if hasattr(test_dataset, 'max_t'):
+            rays = torch.cat([rays_o, rays_d, torch.ones_like(rays_o[:, :1]) * idx], 1)
+        else: 
+            rays = torch.cat([rays_o, rays_d], 1)  # (h*w, 6)
+ 
+
+        rgb_map, _, depth_map, _, _ = renderer(rays, tensorf, chunk=512, N_samples=N_samples,
+                                        ndc_ray=ndc_ray, white_bg = white_bg, device=device)
+        rgb_map = rgb_map.clamp(0.0, 1.0)
+
+        rgb_map, depth_map = rgb_map.reshape(H, W, 3).cpu(), depth_map.reshape(H, W).cpu()
+
+        depth_map, _ = visualize_depth_numpy(depth_map.numpy(),near_far)
+
+        rgb_map = (rgb_map.numpy() * 255).astype('uint8')
+        # rgb_map = np.concatenate((rgb_map, depth_map), axis=1)
+        rgb_maps.append(rgb_map)
+        depth_maps.append(depth_map)
+        if savePath is not None:
+            imageio.imwrite(f'{savePath}/img/{prtx}{idx:03d}.png', rgb_map)
+            rgb_map = np.concatenate((rgb_map, depth_map), axis=1)
+            imageio.imwrite(f'{savePath}/img/rgbd/{prtx}{idx:03d}.png', rgb_map)
+
+    imageio.mimwrite(f'{savePath}/{prtx}video.mp4', np.stack(rgb_maps), fps=30, quality=8)
+    imageio.mimwrite(f'{savePath}/{prtx}depthvideo.mp4', np.stack(depth_maps), fps=30, quality=8)
+
+    if PSNRs:
+        psnr = np.mean(np.asarray(PSNRs))
+        if compute_extra_metrics:
+            ssim = np.mean(np.asarray(ssims))
+            l_a = np.mean(np.asarray(l_alex))
+            l_v = np.mean(np.asarray(l_vgg))
+            np.savetxt(f'{savePath}/{prtx}mean.txt', np.asarray([psnr, ssim, l_a, l_v]))
+        else:
+            np.savetxt(f'{savePath}/{prtx}mean.txt', np.asarray([psnr]))
+
+
+    return PSNRs
+
+@torch.no_grad()
 def render_test(args):
-    raise NotImplementError()
+    # init dataset
+    dataset = dataset_dict[args.dataset_name]
+    test_dataset = get_dataset(args, 'test')
+    white_bg = test_dataset.white_bg
+    ndc_ray = args.ndc_ray
+
+    if not os.path.exists(args.ckpt):
+        print('the ckpt path does not exists!!')
+        return
+
+    ckpt = torch.load(args.ckpt, map_location=device)
+    kwargs = ckpt['kwargs']
+    kwargs.update({'device': device})
+    if args.num_frames > 1 or args.model_name == 'TensoRFVideo': #only some model support max_t, so we pass max_t if num_frames provide
+        kwargs.update({'max_t': args.num_frames})
+        kwargs.update({'t_keyframe': args.t_keyframe})
+        kwargs.update({'upsamp_list': args.upsamp_list})
+    tensorf = eval(args.model_name)(**kwargs)
+    tensorf.load(ckpt)
+    #pdb.set_trace()
+    if args.model_name in ['TensorSph']:
+        tensorf.set_origin(test_dataset.origin,test_dataset.sph_box,test_dataset.sph_frontback)
+    tensorf_for_renderer = tensorf 
+    if args.data_parallel:
+        tensorf_for_renderer = torch.nn.DataParallel(tensorf)
+
+    logfolder = os.path.dirname(args.ckpt)
+
+    
+
+    if False and args.render_train:
+        os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
+        train_dataset = get_dataset(args, 'train')
+        train_dataset.is_sampling = False
+        PSNRs_test = evaluation_lazy(train_dataset,tensorf_for_renderer, args, renderer, f'{logfolder}/imgs_train_all/',
+                                N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+        printlog(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')
+
+
+    if True or args.render_test:
+        test_dataset = get_dataset(args, 'test')
+        os.makedirs(f'{logfolder}/imgs_test_all', exist_ok=True)
+        PSNRs_test = evaluation_lazy(test_dataset,tensorf_for_renderer, args, renderer, f'{logfolder}/imgs_test_all/',
+                                N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+        printlog(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')
+
+    if False and args.render_dynerf:
+        test_dataset = get_dataset(args, 'test', hold_every_frame=10)
+        os.makedirs(f'{logfolder}/imgs_test_dynerf', exist_ok=True)
+        PSNRs_test = evaluation_lazy(test_dataset,tensorf_for_renderer, args, renderer, f'{logfolder}/imgs_test_dynerf/',
+                                N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+        printlog(f'======> {args.expname} test_dynerf psnr: {np.mean(PSNRs_test)} <========================')
+
+    if True or args.render_path:
+        c2ws = test_dataset.render_path
+        print('========>',c2ws.shape)
+        os.makedirs(f'{logfolder}/imgs_path_all', exist_ok=True)
+        evaluation_path_lazy(test_dataset,tensorf_for_renderer, c2ws, renderer, f'{logfolder}/imgs_path_all/',
+                                N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+
 
 def get_dataset(args, split, hold_every_frame=1, psudo_length=-1):
     dataset_class = dataset_dict[args.dataset_name]
@@ -181,7 +301,7 @@ def reconstruction(args):
             ("step_ratio", args.step_ratio), 
             ("fea2denseAct", args.fea2denseAct)
         ])    
-        if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
+        if args.num_frames > 1 or args.model_name == 'TensoRFVideo': #only some model support max_t, so we pass max_t if num_frames provide
             kwargs["max_t"] = args.num_frames 
             kwargs["t_keyframe"] = args.t_keyframe
             kwargs["upsamp_list"] = args.upsamp_list
@@ -212,16 +332,24 @@ def reconstruction(args):
         os.makedirs(f'{logfolder}/imgs_test_all', exist_ok=True)
         PSNRs_test = evaluation_lazy(test_dataset,tensorf, args, renderer, f'{logfolder}/imgs_test_all/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
-        summary_writer.add_scalar('test/psnr_all', np.mean(PSNRs_test), global_step=iteration)
         printlog(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')
+        summary_writer.add_scalar('test/psnr_all', np.mean(PSNRs_test), global_step=args.n_iters)
 
-    if args.render_test:
+    if args.render_dynerf:
         test_dataset = get_dataset(args, 'test', hold_every_frame=10)
         os.makedirs(f'{logfolder}/imgs_test_dynerf', exist_ok=True)
         PSNRs_test = evaluation_lazy(test_dataset,tensorf, args, renderer, f'{logfolder}/imgs_test_dynerf/',
                                 N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
-        summary_writer.add_scalar('test_dynerf/psnr_all', np.mean(PSNRs_test), global_step=iteration)
         printlog(f'======> {args.expname} test_dynerf psnr: {np.mean(PSNRs_test)} <========================')
+        summary_writer.add_scalar('test_dynerf/psnr_all', np.mean(PSNRs_test), global_step=args.n_iters)
+    
+    if args.render_firstframe:
+        test_dataset = get_dataset(args, 'test', hold_every_frame=1000000)
+        os.makedirs(f'{logfolder}/imgs_test_dynerf', exist_ok=True)
+        PSNRs_test = evaluation_lazy(test_dataset,tensorf, args, renderer, f'{logfolder}/imgs_test_firstframe/',
+                                N_vis=-1, N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray,device=device)
+        printlog(f'======> {args.expname} test_firstframe psnr: {np.mean(PSNRs_test)} <========================')
+        summary_writer.add_scalar('test_dynerf/psnr_all', np.mean(PSNRs_test), global_step=args.n_iters)
 
     if args.render_path:
         raise NotImplementError()
