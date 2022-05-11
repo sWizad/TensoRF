@@ -2,7 +2,7 @@
 
 dataset_name = meta_lazy
 datadir = data/meta_3d_video/flame_salmon
-expname =  pure_april-25_test_heiracy_training_v3
+expname =  pure_april-25_test_heiracy_training_v4
 basedir = ./log
 add_timestamp = 0
 

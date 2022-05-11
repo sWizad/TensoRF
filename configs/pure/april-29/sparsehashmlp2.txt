@@ -1,0 +1,40 @@
+
+dataset_name = blender
+datadir = data/nerf_synthetic/lego
+expname =  april-29_sparsehashmlp2
+basedir = ./log
+add_timestamp = 1
+
+n_iters = 25000
+batch_size = 1024
+
+N_voxel_init =  27000000 #2097156 # 128**3
+N_voxel_final = 27000000 # 300**3
+#upsamp_list = [2000,3000,4000,5500,7000]
+upsamp_list = [999999]
+update_AlphaMask_list = [99999999] #[2000,4000, 10000]
+
+N_vis = 5
+vis_every = 300000
+
+render_test = 1
+render_path = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+
+shadingMode = RGB
+fea2denseAct = relu
+
+view_pe = 2
+fea_pe = 2
+
+L1_weight_inital = 0
+L1_weight_rest = 0
+rm_weight_mask_thre = 0
+
+#pure
+data_dim_color = 3
+model_name = SparseHashMLP
+grad_scaler = 1
+visualize_tensor = 0

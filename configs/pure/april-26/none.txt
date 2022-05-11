@@ -2,20 +2,21 @@
 
 dataset_name = meta_lazy
 datadir = data/meta_3d_video/flame_salmon
-expname =  pure_april-25_test_heiracy_training_v3
+expname =  pure_april-26_v2_none
 basedir = ./log
 add_timestamp = 0
 
 downsample_train = 2.640625 # downscale to "1K" resolution. AKA 1024x768
 ndc_ray = 1
 
-n_iters = 35000
+n_iters = 25000
 batch_size = 4096
 
 N_voxel_init = 2097156 # 128**3
 N_voxel_final = 134217728 #512**3
 upsamp_list = [2000,3000,4000,5000,7000]
 update_AlphaMask_list = [2000,4000]
+
 
 
 
@@ -36,18 +37,17 @@ TV_weight_density = 1.0
 TV_weight_app = 1.0
 
 model_name = TensoRFVideo
-num_frames = 300
+num_frames = 30
 hold_every = 1000000 #BIG NUMBER TO USE ONLY FIRST AS VALIDATION
 
 render_train = 0 
 render_test = 1 
 render_path = 0
-render_dynerf = 1
 
-t_keyframe = 30
-keyframe_iters = 30000
+
+keyframe_iters = -1
 median_keyframe = 1
-median_ratio = 0.0
-temporal_ratio = 0.71428571429
-dataloader_thread_ratio = 1.0
-data_parallel = 0 #still doesn't support. we face with nn.ParameterList problem https://github.com/pytorch/pytorch/issues/42327
+median_ratio = -1
+temporal_ratio = -1
+dataloader_thread_ratio = 0.5
+data_parallel = 0

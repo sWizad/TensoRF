@@ -1,0 +1,37 @@
+
+dataset_name = meta
+datadir = data/meta_3d_video/flame_salmon
+expname =  pure-may01_flame_meta
+basedir = ./log
+add_timestamp = 0
+
+n_iters = 30000
+batch_size = 4096
+
+N_voxel_init = 2097156 # 128**3
+N_voxel_final = 27000000 # 300**3
+upsamp_list = [2000,3000,4000,5500,7000]
+update_AlphaMask_list = [2000,4000]
+
+N_vis = 5
+vis_every = 30000
+
+render_test = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+
+shadingMode = MLP_Fea
+fea2denseAct = softplus
+
+view_pe = 2
+fea_pe = 2
+
+L1_weight_inital = 8e-5
+L1_weight_rest = 4e-5
+rm_weight_mask_thre = 1e-4
+
+#flame_salmon setting 
+ndc_ray = 1
+downsample_train = 2.640625 # downscale to "1K" resolution. AKA 1024x768
+vis_every = 999999999

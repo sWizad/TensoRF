@@ -1,0 +1,46 @@
+dataset_name = meta_lazy
+datadir = data/meta_3d_video/flame_salmon
+expname =  pure_may-07-baseline
+add_timestamp = 0
+
+n_iters = 25000
+batch_size = 4096
+
+N_voxel_init = 2097156 # 128**3
+N_voxel_final = 262144000 # 640**3
+upsamp_list = [2000,3000,4000,5500]
+update_AlphaMask_list = [2000, 4000]
+
+N_vis = 5
+vis_every = 5000
+
+render_test = 1
+render_path = 1
+
+n_lamb_sigma = [16,4,4]
+n_lamb_sh = [48,12,12]
+
+shadingMode = MLP_Fea
+fea2denseAct = relu
+
+view_pe = 0
+fea_pe = 0
+
+TV_weight_density = 1.0
+TV_weight_app = 1.0
+
+#flame_salmon setting 
+ndc_ray = 1
+downsample_train = 2.640625 # downscale to "1K" resolution. AKA 1024x768
+vis_every = 5000
+
+dataloader_thread_ratio = 0.25
+
+model_name = TensoRFVideo
+num_frames = 1
+
+n_iters = 250000
+batch_size = 1024
+
+# visualize all test image
+N_vis = -1
