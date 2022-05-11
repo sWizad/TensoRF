@@ -30,6 +30,7 @@ class TensoRFVideo(TensorVMSplit):
         super(TensorVMSplit, self).__init__(*args, **kwargs)
 
     def init_svd_volume(self, res, device):
+        # density_time is list of 3 contain shape #[1,n_component,num_frame,1]
         self.density_plane, self.density_line, self.density_time = self.init_one_svd(self.density_n_comp, self.gridSize, 0.1, device)
         self.app_plane, self.app_line, self.app_time = self.init_one_svd(self.app_n_comp, self.gridSize, 0.1, device)
         self.basis_mat = torch.nn.Linear(sum(self.app_n_comp), self.app_dim, bias=False).to(device)
@@ -48,8 +49,7 @@ class TensoRFVideo(TensorVMSplit):
             time_coeff.append(
                 torch.nn.Parameter(scale * torch.randn((1, n_component[i], gridSize[vec_id], 1))))
             """
-            time_coeff.append(
-                torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.keyframe_initial, 1)))) #TODO: Vec id shouldn't duplicate
+            time_coeff.append(torch.nn.Parameter(scale * torch.randn((1, n_component[i], self.keyframe_initial, 1)))) #TODO: Vec id shouldn't duplicate
         return torch.nn.ParameterList(plane_coef).to(device), torch.nn.ParameterList(line_coef).to(device), torch.nn.ParameterList(time_coeff).to(device)
 
     
@@ -86,13 +86,13 @@ class TensoRFVideo(TensorVMSplit):
 
     def sample_time(self, time_sampled, is_train):
         # normalize 
-        time_sampled = (time_sampled / self.max_t) * 2.0 - 1.0
+        time_sampled = ((time_sampled + 0.5) / self.max_t) * 2.0 - 1.0
         # apply randomization on training to prevent overfit 
-        
+
         if is_train:
             rand_val = torch.rand_like(time_sampled) * 2.0 - 1.0 #random frame from -1 to 1
             rand_val = rand_val / self.max_t # shifting not more than 1 frame 
-            time_sampled = time_sampled + rand_val
+            time_sampled = torch.clip(time_sampled + rand_val, -1.0, 1.0)
         return time_sampled
 
     def forward(self, rays_chunk, white_bg=True, is_train=False, ndc_ray=False, N_samples=-1):
@@ -167,7 +167,7 @@ class TensoRFVideo(TensorVMSplit):
         coordinate_plane = torch.stack((xyz_sampled[..., self.matMode[0]], xyz_sampled[..., self.matMode[1]], xyz_sampled[..., self.matMode[2]])).detach().view(3, -1, 1, 2)
         coordinate_line = torch.stack((xyz_sampled[..., self.vecMode[0]], xyz_sampled[..., self.vecMode[1]], xyz_sampled[..., self.vecMode[2]]))
         coordinate_line = torch.stack((torch.zeros_like(coordinate_line), coordinate_line), dim=-1).detach().view(3, -1, 1, 2) #[3, 1304014, 1, 2]
-
+        
         coordinate_time = torch.stack([time_sampled, time_sampled, time_sampled])
         coordinate_time = torch.stack((torch.zeros_like(coordinate_time), coordinate_time), dim=-1).detach().view(3, -1, 1, 2) #[3, 1304014, 1, 2]
 
@@ -181,7 +181,8 @@ class TensoRFVideo(TensorVMSplit):
             time_coef_point = F.grid_sample(self.density_time[idx_plane], coordinate_time[[idx_plane]],
                                             align_corners=True).view(-1, *xyz_sampled.shape[:1])
 
-            sigma_feature = sigma_feature + torch.sum(plane_coef_point * line_coef_point * time_coef_point, dim=0)
+        sigma_feature = sigma_feature + torch.sum(plane_coef_point * line_coef_point * time_coef_point, dim=0)
+        #sigma_feature = sigma_feature + torch.sum(plane_coef_point * line_coef_point, dim=0)
 
         return sigma_feature
 
@@ -206,6 +207,7 @@ class TensoRFVideo(TensorVMSplit):
         plane_coef_point, line_coef_point, time_coef_point = torch.cat(plane_coef_point), torch.cat(line_coef_point), torch.cat(time_coef_point)
 
         return self.basis_mat((plane_coef_point * line_coef_point * time_coef_point).T)
+        #return self.basis_mat((plane_coef_point * line_coef_point).T)
 
     @torch.no_grad()
     def up_sampling_VM(self, plane_coef, line_coef, time_coef, res_target):
@@ -289,6 +291,16 @@ class TensoRFVideo(TensorVMSplit):
         alpha = 1 - torch.exp(-sigma*length).view(xyz_locs.shape[:-1])
 
         return alpha
+
+    def feature2density(self, density_features):
+        if self.fea2denseAct == "softplus":
+            return F.softplus(density_features+self.density_shift)
+        elif self.fea2denseAct == "relu":
+            return F.relu(density_features)
+        elif self.fea2denseAct == "abs":
+            return torch.abs(density_features)
+        else:
+            raise NotImplementedError("Not avaible feature2density")
 
     def normalize_coord(self, xyz_sampled):
         aabb = self.aabb.to(xyz_sampled.device)
