@@ -4,7 +4,10 @@
 import torch
 import torch.nn.functional as F
 
-import tinycudann as tcnn
+try:
+    import tinycudann as tcnn
+except:
+    pass 
 from .tensoRF import TensorVMSplit, raw2alpha
 import numpy as np
 
