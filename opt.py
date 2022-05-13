@@ -128,6 +128,8 @@ def config_parser(cmd=None):
                         help='N images to vis')
     parser.add_argument("--vis_every", type=int, default=10000,
                         help='frequency of visualize the image')
+    parser.add_argument("--checkpoint_every", type=int, default=-1,
+                        help='checkpoint find every n iteration. useful for render or debuging')
 
     # hashgrid configuration
     parser.add_argument('--grid_level', type=int, default=16)

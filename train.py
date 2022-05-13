@@ -288,7 +288,7 @@ def reconstruction(args):
                 summary_writer.add_image('train/eval_depth', torch.from_numpy(depth_map).permute(2,0,1), global_step=iteration)
 
         
-        if args.visualize_tensor > 0 and ((iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000)):
+        if False and args.visualize_tensor > 0 and ((iteration % 101 == 0 and iteration<5000) or (iteration % 1001 == 0 and iteration>5000)):
             torch.cuda.empty_cache()
             #pdb.set_trace()
             W, H = test_dataset.img_wh
@@ -364,6 +364,9 @@ def reconstruction(args):
                 lr_scale = args.lr_decay_target_ratio ** (iteration / args.n_iters)
             grad_vars = tensorf.get_optparam_groups(args.lr_init*lr_scale, args.lr_basis*lr_scale)
             optimizer = torch.optim.Adam(grad_vars, betas=(0.9, 0.99))
+        
+        if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0 and iteration > 0:
+            tensorf.save(f'{logfolder}/{args.expname}_{iteration:06d}.th')
         
 
     tensorf.save(f'{logfolder}/{args.expname}.th')
