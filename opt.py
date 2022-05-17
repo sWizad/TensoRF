@@ -26,7 +26,9 @@ def config_parser(cmd=None):
     parser.add_argument("--n_iters", type=int, default=30000)
 
     parser.add_argument('--dataset_name', type=str, default='blender',
-                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy', 'meta_dynamic', 'meta_crop'])
+                        choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy', 'meta_dynamic', 'meta_crop',
+                                'shiny_few1','shiny_few5','shiny_few10','shiny_few15','shiny_few20','shiny_fern400'
+                        ])
 
 
     # training options
