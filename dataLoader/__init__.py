@@ -8,6 +8,7 @@ from .meta import MetaVideoDataset
 from .meta_lazy import MetaVideoLazyDataset
 from .meta_dynamic import MetaDynamicDataset
 from .meta_crop import MetaCropVideoDataset
+from .llff_cube import LLFFCube
 
 dataset_dict = {'blender': BlenderDataset,
                'llff':LLFFDataset,
@@ -18,4 +19,6 @@ dataset_dict = {'blender': BlenderDataset,
                'meta':MetaVideoDataset,
                'meta_lazy': MetaVideoLazyDataset,
                'meta_dynamic': MetaDynamicDataset,
-               'meta_crop': MetaCropVideoDataset}
+               'meta_crop': MetaCropVideoDataset,
+               'llff_cube': LLFFCube
+               }
