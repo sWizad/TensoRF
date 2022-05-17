@@ -9,6 +9,7 @@ from .meta_lazy import MetaVideoLazyDataset
 from .meta_dynamic import MetaDynamicDataset
 from .meta_crop import MetaCropVideoDataset
 from .llff_cube import LLFFCube
+from .shiny_few import ShinyFew1, ShinyFew5, ShinyFew10, ShinyFew15, ShinyFew20, ShinyFern400
 
 dataset_dict = {'blender': BlenderDataset,
                'llff':LLFFDataset,
@@ -20,5 +21,11 @@ dataset_dict = {'blender': BlenderDataset,
                'meta_lazy': MetaVideoLazyDataset,
                'meta_dynamic': MetaDynamicDataset,
                'meta_crop': MetaCropVideoDataset,
-               'llff_cube': LLFFCube
+               'llff_cube': LLFFCube,
+               'shiny_few1': ShinyFew1,
+               'shiny_few5': ShinyFew5,
+               'shiny_few10': ShinyFew10,
+               'shiny_few15': ShinyFew15,
+               'shiny_few20': ShinyFew20,
+               'shiny_fern400': ShinyFern400
                }
