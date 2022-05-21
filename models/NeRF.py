@@ -1,6 +1,7 @@
 # NeRFVideo, 6-D input NeRF to show how well it can render the video
 import torch
 import torch.nn.functional as F
+import time
 
 from utils import printlog
 from .tensorBase import TensorBase, raw2alpha, positional_encoding, AlphaGridMask
@@ -236,6 +237,62 @@ class NeRF(TensorBase):
             alpha_volume = torch.from_numpy(np.unpackbits(ckpt['alphaMask.mask'])[:length].reshape(ckpt['alphaMask.shape']))
             self.alphaMask = AlphaGridMaskMultiDevice(self.device, ckpt['alphaMask.aabb'].to(self.device), alpha_volume.float().to(self.device))
         self.load_state_dict(ckpt['state_dict'])
+
+    @torch.no_grad()
+    def filtering_rays(self, all_rays, all_rgbs, N_samples=256, chunk=10240*5, bbox_only=False):
+        print('========> filtering rays ...')
+        tt = time.time()
+
+        N = torch.tensor(all_rays.shape[:-1]).prod()
+
+        mask_filtered = []
+        idx_chunks = torch.split(torch.arange(N), chunk)
+        for idx_chunk in idx_chunks:
+            rays_chunk = all_rays[idx_chunk].to(self.device)
+
+            rays_o, rays_d = rays_chunk[..., :3], rays_chunk[..., 3:6]
+            if bbox_only:
+                vec = torch.where(rays_d == 0, torch.full_like(rays_d, 1e-6), rays_d)
+                rate_a = (self.aabb[1].to(rays_o.device) - rays_o) / vec
+                rate_b = (self.aabb[0].to(rays_o.device) - rays_o) / vec
+                t_min = torch.minimum(rate_a, rate_b).amax(-1)#.clamp(min=near, max=far)
+                t_max = torch.maximum(rate_a, rate_b).amin(-1)#.clamp(min=near, max=far)
+                mask_inbbox = t_max > t_min
+
+            else:
+                xyz_sampled, _,_ = self.sample_ray(rays_o, rays_d, N_samples=N_samples, is_train=False)
+                mask_inbbox= (self.alphaMask.sample_alpha(xyz_sampled).view(xyz_sampled.shape[:-1]) > 0).any(-1)
+
+            mask_filtered.append(mask_inbbox.cpu())
+
+        mask_filtered = torch.cat(mask_filtered).view(all_rgbs.shape[:-1])
+
+        print(f'Ray filtering done! takes {time.time()-tt} s. ray mask ratio: {torch.sum(mask_filtered) / N}')
+        return all_rays[mask_filtered], all_rgbs[mask_filtered]
+
+    def sample_ray(self, rays_o, rays_d, is_train=True, N_samples=-1):
+        N_samples = N_samples if N_samples>0 else self.nSamples
+        stepsize = self.stepSize
+        near, far = self.near_far
+        vec = torch.where(rays_d==0, torch.full_like(rays_d, 1e-6), rays_d)
+        aabb1 = self.aabb[1].to(rays_o.device)
+        aabb0 = self.aabb[0].to(rays_o.device)
+        rate_a = (aabb1 - rays_o) / vec
+        rate_b = (aabb0 - rays_o) / vec
+        t_min = torch.minimum(rate_a, rate_b).amax(-1).clamp(min=near, max=far)
+
+        rng = torch.arange(N_samples)[None].float()
+        if is_train:
+            rng = rng.repeat(rays_d.shape[-2],1)
+            rng += torch.rand_like(rng[:,[0]])
+        step = stepsize.to(rays_o.device) * rng.to(rays_o.device)
+        interpx = (t_min[...,None] + step)
+
+        rays_pts = rays_o[...,None,:] + rays_d[...,None,:] * interpx[...,None]
+        mask_outbbox = ((aabb0>rays_pts) | (rays_pts>aabb1)).any(dim=-1)
+
+        return rays_pts, interpx, ~mask_outbbox
+
 
 
 class AbsoluteAcivation(torch.nn.Module):
