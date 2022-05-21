@@ -13,7 +13,7 @@ batch_size = 4096
 N_voxel_init = 2097156 # 128**3
 N_voxel_final = 262144000 # 640**3
 upsamp_list = [2000,3000,4000,5500]
-update_AlphaMask_list = [2500]
+update_AlphaMask_list = [10,2500]
 
 N_vis = 5
 vis_every = 10000

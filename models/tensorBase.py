@@ -317,13 +317,14 @@ class TensorBase(torch.nn.Module):
         for i in range(gridSize[2]):
             alpha[i] = self.compute_alpha(dense_xyz[i].view(-1,3), self.distance_scale*self.aabbDiag).view((gridSize[1], gridSize[0]))
         alpha = alpha.clamp(0,1)[None,None]
+        
 
 
         ks = 3
         alpha = F.max_pool3d(alpha, kernel_size=ks, padding=ks // 2, stride=1).view(gridSize[::-1])
         alpha[alpha>=self.alphaMask_thres] = 1
         alpha[alpha<self.alphaMask_thres] = 0
-
+        
         self.alphaMask = AlphaGridMask(self.device, self.aabb, alpha)
 
         valid_xyz = dense_xyz[alpha>0.5]

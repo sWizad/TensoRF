@@ -1,7 +1,7 @@
 
 dataset_name = blender
 datadir = data/nerf_synthetic/lego
-expname =  lego_tensorf
+expname =  lego_tensorf_nomask
 basedir = ./log/pure-hypo/may-20/
 add_timestamp = 1
 
@@ -11,7 +11,7 @@ batch_size = 4096
 N_voxel_init = 2097156 # 128**3
 N_voxel_final = 27000000 # 300**3
 upsamp_list = [2000,3000,4000,5500,7000]
-update_AlphaMask_list = [2000,4000]
+update_AlphaMask_list = [20000000]
 
 N_vis = 5
 vis_every = 30000
@@ -24,9 +24,8 @@ n_lamb_sh = [48,48,48]
 shadingMode = MLP_Fea
 fea2denseAct = softplus
 
-pos_pe 10
-view_pe = 4
-fea_pe = 10
+view_pe = 2
+fea_pe = 2
 
 L1_weight_inital = 8e-5
 L1_weight_rest = 4e-5
