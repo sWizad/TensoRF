@@ -10,3 +10,4 @@ from .NeRFVideo import NeRFVideo
 from .Neural3DVideo import Neural3DVideo
 from .SparseHashMLP import SparseHashMLP
 from .tensoRF5dSigma import TensoRF5dSigma
+from .ExplicitGrid import ExplicitGrid
