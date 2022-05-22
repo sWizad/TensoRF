@@ -1,7 +1,7 @@
 
 dataset_name = llff
 datadir = data/nerf_llff_data/fern
-expname =  fern_nerf_nomask
+expname =  fern_nerf_nomask_v2
 basedir = ./log/pure-hypo/may-20/
 
 downsample_train = 2.0
@@ -38,3 +38,4 @@ lr_basis = 5e-4
 model_name = NeRF
 
 data_dim_color = 3
+data_parallel = 1

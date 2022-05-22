@@ -20,15 +20,17 @@ render_test = 1
 n_lamb_sigma = [16,16,16]
 n_lamb_sh = [48,48,48]
 
-shadingMode = MLP_Fea
+shadingMode = RGB
 fea2denseAct = softplus
 
-view_pe = 2
-fea_pe = 2
+pos_pe = 10
+view_pe = 4
+fea_pe = 10
 
-L1_weight_inital = 8e-5
-L1_weight_rest = 4e-5
+TV_weight_density = 0.0
+TV_weight_app = 0.0
 rm_weight_mask_thre = 1e-4
 
 model_name = NeRF
 lr_basis = 5e-4
+data_dim_color = 3

@@ -1,7 +1,7 @@
 
 dataset_name = llff
 datadir = data/nerf_llff_data/fern
-expname =  fern_nerf_nomask
+expname =  fern_nerf_v2
 basedir = ./log/pure-hypo/may-20/
 
 downsample_train = 2.0
@@ -13,7 +13,7 @@ batch_size = 4096
 N_voxel_init = 2097156 # 128**3
 N_voxel_final = 262144000 # 640**3
 upsamp_list = [2000,3000,4000,5500]
-update_AlphaMask_list = [25000000]
+update_AlphaMask_list = [25000]
 
 N_vis = -1
 vis_every = 10000
@@ -27,7 +27,7 @@ n_lamb_sh = [48,12,12]
 shadingMode = RGB
 fea2denseAct = relu
 
-pos_pe 10
+pos_pe = 10
 view_pe = 4
 fea_pe = 10
 
@@ -37,4 +37,6 @@ TV_weight_app = 0.0
 lr_basis = 5e-4
 model_name = NeRF
 
+
 data_dim_color = 3
+data_parallel = 1
