@@ -1,0 +1,43 @@
+dataset_name = blender
+datadir = data/nerf_synthetic/sparklyball
+expname =  sparklyball_nerf
+basedir = ./log/pure-hypo/may-29/
+add_timestamp = 0
+
+n_iters =  1000000
+batch_size = 4096
+
+#N_voxel_init = 27000000 # 300**3
+#N_voxel_final = 27000000 # 300**3
+#upsamp_list = [10000000]
+#update_AlphaMask_list = [10000000]
+
+N_voxel_init = 2097156 # 128**3
+N_voxel_final = 27000000 # 300**3
+upsamp_list = [4000,6000,8000,11000,14000]
+update_AlphaMask_list = [4000,8000]
+
+N_vis = 5
+vis_every = 10000
+
+render_test = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+
+shadingMode = RGB
+fea2denseAct = softplus
+
+pos_pe = 10
+view_pe = 4
+fea_pe = 10
+
+TV_weight_density = 0.0
+TV_weight_app = 0.0
+rm_weight_mask_thre = 1e-4
+
+model_name = NeRF
+lr_basis = 5e-4
+data_dim_color = 3
+
+data_parallel=1

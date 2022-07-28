@@ -1,3 +1,5 @@
+# load blender dataset in LLFF format, useful for debug lightfield
+
 import torch,cv2
 from torch.utils.data import Dataset
 import json
@@ -5,24 +7,27 @@ from tqdm import tqdm
 import os
 from PIL import Image
 from torchvision import transforms as T
+from .llff import center_poses, average_poses
+import glob
 
 
 from .ray_utils import *
 
 
-class BlenderDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=1.0, is_stack=False, N_vis=-1, ndc_ray=False, **kwargs):
+class LLFFBlenderDataset(Dataset):
+    def __init__(self, datadir, split='train', downsample=1.0, is_stack=False, N_vis=-1, ndc_ray=False, hold_every=8, **kwargs):
+        self.hold_every = hold_every
         self.ndc_ray = ndc_ray
         self.N_vis = N_vis
         self.root_dir = datadir
         self.split = split
         self.is_stack = is_stack
+        self.downsample=downsample
         self.img_wh = (int(800/downsample),int(800/downsample))
         self.define_transforms()
 
         self.scene_bbox = torch.tensor([[-1.5, -1.5, -1.5], [1.5, 1.5, 1.5]])
         self.blender2opencv = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
-        self.downsample=downsample
         self.read_meta()
         self.define_proj_mat()
 
@@ -38,39 +43,61 @@ class BlenderDataset(Dataset):
     
     def read_meta(self):
 
-        with open(os.path.join(self.root_dir, f"transforms_{self.split}.json"), 'r') as f:
-            self.meta = json.load(f)
+        poses_bounds = np.load(os.path.join(self.root_dir, 'poses_bounds.npy'))  # (N_images, 17)
+        self.image_paths = sorted(glob.glob(os.path.join(self.root_dir, 'images_4/*')))
+        # load full resolution image then resize
+        if self.split in ['train', 'test']:
+            assert len(poses_bounds) == len(self.image_paths), \
+                'Mismatch between number of images and number of poses! Please rerun COLMAP!'
 
-        w, h = self.img_wh
-        self.focal = 0.5 * 800 / np.tan(0.5 * self.meta['camera_angle_x'])  # original focal length
-        self.focal *= self.img_wh[0] / 800  # modify focal length to match size self.img_wh
+        poses = poses_bounds[:, :15].reshape(-1, 3, 5)  # (N_images, 3, 5)
+        self.near_fars = poses_bounds[:, -2:]  # (N_images, 2)
+        hwf = poses[:, :, -1]
 
+        # Step 1: rescale focal length according to training resolution
+        H, W, self.focal = poses[0, :, -1]  # original intrinsics, same for all images
+        self.focal = float(self.focal)
+        H = int(H)
+        W = int(W)
+        h,w = H, W
+        self.img_wh = np.array([int(W / self.downsample), int(H / self.downsample)])
+        #self.focal = [self.focal * self.img_wh[0] / W, self.focal * self.img_wh[1] / H]
 
+        # Step 2: correct poses
+        # Original poses has rotation in form "down right back", change to "right up back"
+        # See https://github.com/bmild/nerf/issues/34
+        # (N_images, 3, 4) exclude H, W, focal
+        poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
+        poses_one = np.zeros_like(poses[:,:1,:])
+        poses_one[:,:,-1] = 1.0
+        poses = np.concatenate([poses, poses_one],axis=1)
+        # (N_images, 4, 4) 
+        self.poses = [torch.from_numpy(p).float() for p in poses]
+        
         # ray directions for all pixels, same for all images (same H, W, focal)
+    
         self.directions = get_ray_directions(h, w, [self.focal,self.focal])  # (h, w, 3)
         self.directions = self.directions / torch.norm(self.directions, dim=-1, keepdim=True)
         self.intrinsics = torch.tensor([[self.focal,0,w/2],[0,self.focal,h/2],[0,0,1]]).float()
 
-        self.image_paths = []
-        self.poses = []
+        self.image_paths = sorted(glob.glob(os.path.join(self.root_dir, 'images_4/*')))
         self.all_rays = []
         self.all_rgbs = []
         self.all_masks = []
         self.all_depth = []
-        #self.downsample=1.0
+        self.downsample=1.0
 
-        img_eval_interval = 1 if self.N_vis < 0 else len(self.meta['frames']) // self.N_vis
-        idxs = list(range(0, len(self.meta['frames']), img_eval_interval))
+        #img_eval_interval = 1 if self.N_vis < 0 else len(self.meta['frames']) // self.N_vis
+        #idxs = list(range(0, len(self.meta['frames']), img_eval_interval))
+
+        i_test = np.arange(0, len(self.poses), self.hold_every)  # [np.argmin(dists)]
+        img_list = i_test if self.split != 'train' else list(set(np.arange(len(self.poses))) - set(i_test))
+        idxs = img_list
+
+
         for i in tqdm(idxs, desc=f'Loading data {self.split} ({len(idxs)})'):#img_list:#
-
-            frame = self.meta['frames'][i]
-            pose = np.array(frame['transform_matrix']) @ self.blender2opencv
-            c2w = torch.FloatTensor(pose)
-            self.poses += [c2w]
-
-            image_path = os.path.join(self.root_dir, f"{frame['file_path']}.png")
-            self.image_paths += [image_path]
-            img = Image.open(image_path)
+            
+            img = Image.open(self.image_paths[i])
             
             if self.downsample!=1.0:
                 img = img.resize(self.img_wh, Image.LANCZOS)
@@ -79,7 +106,7 @@ class BlenderDataset(Dataset):
             img = img[:, :3] * img[:, -1:] + (1 - img[:, -1:])  # blend A to RGB
             self.all_rgbs += [img]
 
-
+            c2w = self.poses[i]
             rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
             self.all_rays += [torch.cat([rays_o, rays_d], 1)]  # (h*w, 6)
 

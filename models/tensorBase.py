@@ -135,7 +135,6 @@ class MLPRender(torch.nn.Module):
         return rgb
 
 
-
 class TensorBase(torch.nn.Module):
     def __init__(self, aabb, gridSize, device, density_n_comp = 8, appearance_n_comp = 24, app_dim = 27,
                     shadingMode = 'MLP_PE', alphaMask = None, near_far=[2.0,6.0],
@@ -364,7 +363,6 @@ class TensorBase(torch.nn.Module):
                 mask_inbbox= (self.alphaMask.sample_alpha(xyz_sampled).view(xyz_sampled.shape[:-1]) > 0).any(-1)
 
             mask_filtered.append(mask_inbbox.cpu())
-
         mask_filtered = torch.cat(mask_filtered).view(all_rgbs.shape[:-1])
 
         print(f'Ray filtering done! takes {time.time()-tt} s. ray mask ratio: {torch.sum(mask_filtered) / N}')
@@ -414,6 +412,7 @@ class TensorBase(torch.nn.Module):
         else:
             xyz_sampled, z_vals, ray_valid = self.sample_ray(rays_chunk[:, :3], viewdirs, is_train=is_train,N_samples=N_samples)
             dists = torch.cat((z_vals[:, 1:] - z_vals[:, :-1], torch.zeros_like(z_vals[:, :1])), dim=-1)
+            
         viewdirs = viewdirs.view(-1, 1, 3).expand(xyz_sampled.shape)
         #np_xyz = xyz_sampled.cpu().detach().numpy()
         #print(np.max(np_xyz,(0,1)))

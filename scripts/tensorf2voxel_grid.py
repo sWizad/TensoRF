@@ -11,7 +11,7 @@ import torch.nn.functional as F
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--ckpt', required=True, type=str, help='checkpoint find location')
 parser.add_argument('-o', '--density_file', default='density.npy', type=str, help='density file output path' )
-parser.add_argument('-a', '--activation', default='relu', type=str, help='activation function (relu, softplus, etc)')
+parser.add_argument('-a', '--activation', default='softplus', type=str, help='activation function (relu, softplus, etc)')
 args = parser.parse_args()
 
 class AlphaGridMask(torch.nn.Module):
@@ -83,7 +83,7 @@ def main():
         sigma = sigma.permute(2,0,1) #Webgl / alphaMask use CHW format
 
         # Need to filter with alphaMask first
-        if alphaMask is not None:
+        if False and alphaMask is not None:
             print("Applying alphamask")
             #torch.Size([1, 1, 140, 235, 211])
             # sigma: torch.Size([471, 786, 706]) [z,x,y]

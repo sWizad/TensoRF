@@ -12,6 +12,8 @@ from .meta_crop import MetaCropVideoDataset
 from .llff_cube import LLFFCube
 from .shiny_few import ShinyFew1, ShinyFew5, ShinyFew10, ShinyFew15, ShinyFew20, ShinyFern400
 from .llff_fern400 import LLFFFern400
+from .llff_blender import LLFFBlenderDataset
+from .blender_depth import BlenderDepthDataset
 
 dataset_dict = {'blender': BlenderDataset,
                'llff':LLFFDataset,
@@ -30,5 +32,7 @@ dataset_dict = {'blender': BlenderDataset,
                'shiny_few15': ShinyFew15,
                'shiny_few20': ShinyFew20,
                'shiny_fern400': ShinyFern400,
-               'llff_fern400': LLFFFern400
+               'llff_fern400': LLFFFern400,
+               'blender_depth': BlenderDepthDataset,
+               'llff_blender': LLFFBlenderDataset
                }

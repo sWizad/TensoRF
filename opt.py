@@ -27,7 +27,7 @@ def config_parser(cmd=None):
 
     parser.add_argument('--dataset_name', type=str, default='blender',
                         choices=['shiny','deepvv','blender', 'llff', 'nsvf', 'dtu','tankstemple','meta','meta_lazy', 'meta_dynamic', 'meta_crop', 'llff_cube',
-                                'shiny_few1','shiny_few5','shiny_few10','shiny_few15','shiny_few20','shiny_fern400', 'llff_fern400'
+                                'shiny_few1','shiny_few5','shiny_few10','shiny_few15','shiny_few20','shiny_fern400', 'llff_fern400', 'blender_depth', 'llff_blender'
                         ])
 
 

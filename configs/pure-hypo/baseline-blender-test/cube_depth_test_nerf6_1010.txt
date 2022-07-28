@@ -1,0 +1,35 @@
+
+dataset_name = blender_depth
+datadir = data/nerf_synthetic/cube_depth
+expname =  blender_cube_depth_nerf6_1010
+basedir = ./log/pure-hypo/baseline-blender_test
+add_timestamp = 0
+
+n_iters = 250000
+batch_size = 4096
+
+N_voxel_init = 27000000 # 128**3
+N_voxel_final = 27000000 # 300**3
+upsamp_list = [2000000]
+update_AlphaMask_list = [2000000]
+
+N_vis = 5
+vis_every = 10000
+
+render_test = 1
+render_train = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+
+shadingMode = RGB
+fea2denseAct = relu
+
+view_pe = 10
+pos_pe = 10
+
+L1_weight_inital = 0.0
+L1_weight_rest = 0.0
+rm_weight_mask_thre = 1e-4
+model_name = NeRFdepth6
+data_dim_color = 3

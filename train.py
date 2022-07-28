@@ -19,6 +19,7 @@ import datetime
 from dataLoader import dataset_dict
 import sys
 import pdb
+import time
 
 
 
@@ -42,7 +43,7 @@ class SimpleSampler:
         return self.ids[self.curr:self.curr+self.batch]
 
 
-@torch.no_grad()
+#@torch.no_grad()
 def render_test(args):
     # init dataset
     dataset = dataset_dict[args.dataset_name]
@@ -71,9 +72,10 @@ def render_test(args):
     tensorf_for_renderer = tensorf 
     if args.data_parallel:
         tensorf_for_renderer = torch.nn.DataParallel(tensorf)
-    rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(this_rays, tensorf_for_renderer, chunk=args.batch_size,  N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
+    #rgb_map, alphas_map, depth_map, weights, uncertainty = renderer(this_rays, tensorf_for_renderer, chunk=args.batch_size,  N_samples=-1, white_bg = white_bg, ndc_ray=ndc_ray, device=device, is_train=True)
 
     logfolder = os.path.dirname(args.ckpt)
+    
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
         train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True, ndc_ray=args.ndc_ray, max_t=args.num_frames, hold_every=args.hold_every)
@@ -217,6 +219,7 @@ def reconstruction(args):
     tensorf_for_renderer = tensorf 
     if args.data_parallel:
         tensorf_for_renderer = torch.nn.DataParallel(tensorf)
+    start_time = time.time()
     for iteration in pbar:
         with autocast(enabled=False):
             #if iteration %50 > 5 and iteration %50 < 48 : continue
@@ -370,7 +373,7 @@ def reconstruction(args):
         
 
     tensorf.save(f'{logfolder}/{args.expname}.th')
-
+    print("Trained finished in {} seconds".format(time.time() - start_time))
 
     if args.render_train:
         os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)

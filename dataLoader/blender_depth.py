@@ -1,41 +1,23 @@
-import torch,cv2
+import torch
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import os
 from PIL import Image
 from torchvision import transforms as T
+import numpy as np 
+try:
+    import OpenEXR as exr
+    import Imath
+except:
+    pass
+import skimage
 
+from .blender import BlenderDataset
+from .ray_utils import get_ray_directions, get_rays
 
-from .ray_utils import *
+class BlenderDepthDataset(BlenderDataset):
 
-
-class BlenderDataset(Dataset):
-    def __init__(self, datadir, split='train', downsample=1.0, is_stack=False, N_vis=-1, ndc_ray=False, **kwargs):
-        self.ndc_ray = ndc_ray
-        self.N_vis = N_vis
-        self.root_dir = datadir
-        self.split = split
-        self.is_stack = is_stack
-        self.img_wh = (int(800/downsample),int(800/downsample))
-        self.define_transforms()
-
-        self.scene_bbox = torch.tensor([[-1.5, -1.5, -1.5], [1.5, 1.5, 1.5]])
-        self.blender2opencv = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
-        self.downsample=downsample
-        self.read_meta()
-        self.define_proj_mat()
-
-        self.white_bg = True
-        self.near_far = [2.0,6.0]
-        
-        self.center = torch.mean(self.scene_bbox, axis=0).float().view(1, 1, 3)
-        self.radius = (self.scene_bbox[1] - self.center).float().view(1, 1, 3)
-
-    def read_depth(self, filename):
-        depth = np.array(read_pfm(filename)[0], dtype=np.float32)  # (800, 800)
-        return depth
-    
     def read_meta(self):
 
         with open(os.path.join(self.root_dir, f"transforms_{self.split}.json"), 'r') as f:
@@ -56,8 +38,7 @@ class BlenderDataset(Dataset):
         self.all_rays = []
         self.all_rgbs = []
         self.all_masks = []
-        self.all_depth = []
-        #self.downsample=1.0
+        self.downsample=1.0
 
         img_eval_interval = 1 if self.N_vis < 0 else len(self.meta['frames']) // self.N_vis
         idxs = list(range(0, len(self.meta['frames']), img_eval_interval))
@@ -71,18 +52,25 @@ class BlenderDataset(Dataset):
             image_path = os.path.join(self.root_dir, f"{frame['file_path']}.png")
             self.image_paths += [image_path]
             img = Image.open(image_path)
+
+            depth_path = os.path.join(self.root_dir, f"{frame['file_path']}_depth.exr")
+            depth = read_depth_exr_file(depth_path)              
             
             if self.downsample!=1.0:
                 img = img.resize(self.img_wh, Image.LANCZOS)
+                depth = skimage.transform.rescale(depth, 1.0 / self.downsample)
+
             img = self.transform(img)  # (4, h, w)
+            depth = self.transform(depth) #(1,h,w)
+            
             img = img.view(4, -1).permute(1, 0)  # (h*w, 4) RGBA
             img = img[:, :3] * img[:, -1:] + (1 - img[:, -1:])  # blend A to RGB
             self.all_rgbs += [img]
 
-
+            
             rays_o, rays_d = get_rays(self.directions, c2w)  # both (h*w, 3)
-            self.all_rays += [torch.cat([rays_o, rays_d], 1)]  # (h*w, 6)
-
+            depth = depth.permute(1,2,0).view(-1,1)
+            self.all_rays += [torch.cat([rays_o, rays_d, depth], 1)]  # (h*w, 7)
 
         self.poses = torch.stack(self.poses)
         if not self.is_stack:
@@ -96,32 +84,11 @@ class BlenderDataset(Dataset):
             # self.all_masks = torch.stack(self.all_masks, 0).reshape(-1,*self.img_wh[::-1])  # (len(self.meta['frames]),h,w,3)
 
 
-    def define_transforms(self):
-        self.transform = T.ToTensor()
-        
-    def define_proj_mat(self):
-        self.proj_mat = self.intrinsics.unsqueeze(0) @ torch.inverse(self.poses)[:,:3]
-
-    def world2ndc(self,points,lindisp=None):
-        device = points.device
-        return (points - self.center.to(device)) / self.radius.to(device)
-        
-    def __len__(self):
-        return len(self.all_rgbs)
-
-    def __getitem__(self, idx):
-
-        if self.split == 'train':  # use data in the buffers
-            sample = {'rays': self.all_rays[idx],
-                      'rgbs': self.all_rgbs[idx]}
-
-        else:  # create data for each image separately
-
-            img = self.all_rgbs[idx]
-            rays = self.all_rays[idx]
-            mask = self.all_masks[idx] # for quantity evaluation
-
-            sample = {'rays': rays,
-                      'rgbs': img,
-                      'mask': mask}
-        return sample
+def read_depth_exr_file(filepath):
+    exrfile = exr.InputFile(filepath)
+    raw_bytes = exrfile.channel('B', Imath.PixelType(Imath.PixelType.FLOAT))
+    depth_vector = np.frombuffer(raw_bytes, dtype=np.float32)
+    height = exrfile.header()['displayWindow'].max.y + 1 - exrfile.header()['displayWindow'].min.y
+    width = exrfile.header()['displayWindow'].max.x + 1 - exrfile.header()['displayWindow'].min.x
+    depth_map = np.reshape(depth_vector, (height, width))
+    return depth_map

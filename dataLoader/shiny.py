@@ -179,7 +179,7 @@ class ShinyDataset(Dataset):
         self.read_meta()
         self.white_bg = False
 
-        #         self.near_far = [np.min(self.near_fars[:,0]),np.max(self.near_fars[:,1])]
+        #self.near_far = [np.min(self.near_fars[:,0]),np.max(self.near_fars[:,1])]
         self.near_far = [0.0, 1.0]
         #self.scene_bbox = torch.tensor([[-1.5, -1.67, -1.0], [1.5, 1.67, 1.0]])
         self.scene_bbox = torch.tensor([[-2.0, -2.0, -1.0], [2.0, 2.0, 1.0]])
