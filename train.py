@@ -174,6 +174,8 @@ def reconstruction(args):
             ("step_ratio", args.step_ratio), 
             ("fea2denseAct", args.fea2denseAct)
         ])    
+        if args.model_name in ['Sigma5DRF']:
+            kwargs['dataset']= train_dataset
         if args.num_frames > 1: #only some model support max_t, so we pass max_t if num_frames provide
             kwargs["max_t"] = args.num_frames 
             kwargs["t_keyframe"] = args.t_keyframe
