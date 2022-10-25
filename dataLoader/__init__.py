@@ -15,6 +15,7 @@ from .llff_fern400 import LLFFFern400
 from .llff_blender import LLFFBlenderDataset
 from .blender_depth import BlenderDepthDataset
 from .blender_predict import BlenderPredictDataset
+from .dreamfusion import DreamFusionDataset
 
 dataset_dict = {'blender': BlenderDataset,
                'llff':LLFFDataset,
@@ -36,5 +37,6 @@ dataset_dict = {'blender': BlenderDataset,
                'llff_fern400': LLFFFern400,
                'blender_depth': BlenderDepthDataset,
                'llff_blender': LLFFBlenderDataset,
-               'blender_predict': BlenderPredictDataset
+               'blender_predict': BlenderPredictDataset,
+               'dreamfusion': DreamFusionDataset
                }

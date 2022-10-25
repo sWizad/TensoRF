@@ -1,5 +1,6 @@
 __pycache__/
 
+TOKEN
 data
 log
 configs2/
@@ -8,3 +9,5 @@ script/
 
 run_batch.py
 /*.npy
+sd.py
+sd.png
