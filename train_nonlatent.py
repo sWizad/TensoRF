@@ -67,27 +67,29 @@ class MainApp():
                     device=device,
                     is_train=False
                 )
-                latents = ret[0].view(64,64,4).permute(2,0,1)[None]
-                
-                image = self.decode_latents(latents)
+                image = ret[0].view(self.H,self.W,3).permute(2,0,1)[None] # 1,3,512,512
                 image = image.cpu()[0].permute(1,2,0).numpy()
                 image = skimage.img_as_ubyte(image)
                 skimage.io.imsave(os.path.join(image_dir, f"{batch_id:03d}.png"), image)
                 
-                depth_map = ret[2].view(64,64).cpu().numpy()
+                depth_map = ret[2].view(self.H,self.W).cpu().numpy()
                 depth_map, _ = visualize_depth_numpy(depth_map,self.test_dataset.near_far)
                 depth_map = skimage.img_as_ubyte(depth_map)
-                skimage.io.imsave(os.path.join(image_dir, f"{batch_id:03d}_depth_512.png"), depth_map)
+                skimage.io.imsave(os.path.join(image_dir, f"{batch_id:03d}_depth.png"), depth_map)
 
 
 
     def init_tensorf(self):
         args = self.args
+        self.H = 128
+        self.W = 128
         # init log file
         if args.add_timestamp:
             logfolder = f'{args.basedir}/{args.expname}{datetime.datetime.now().strftime("-%Y%m%d-%H%M%S")}'
         else:
             logfolder = f'{args.basedir}/{args.expname}'
+
+        
         
         self.logfolder = logfolder
         os.makedirs(logfolder, exist_ok=True)
@@ -100,8 +102,8 @@ class MainApp():
 
         prompt = "a high quality photo of a pineapple"
         dataset = dataset_dict[args.dataset_name]
-        self.train_dataset = dataset(split="train", iter=args.n_iters)
-        self.test_dataset = dataset(prompt, split="test", iter=120)
+        self.train_dataset = dataset(split="train", iter=args.n_iters, H=self.H, W=self.W)
+        self.test_dataset = dataset(prompt, split="test", iter=120, H=self.H, W=self.W)
 
         aabb = self.train_dataset.scene_bbox.to(device)
         near_far =  self.train_dataset.near_far
@@ -177,9 +179,9 @@ class MainApp():
             dataloader = DataLoader(self.train_dataset, batch_size=1, num_workers=8)
             for step_id, batch in enumerate(dataloader):
                 self.optimizer.zero_grad()
-                rays_train = batch['rays'].squeeze().to(self.device) #[4096, 6]
+                rays_train = batch['rays'].squeeze().to(self.device) #[512*512, 6]
                 text_embed = batch['text_embed'].squeeze().to(self.device) #[2, 77, 768]
-               
+
                 ret = renderer(
                     rays_train, 
                     self.tensorf, 
@@ -190,21 +192,28 @@ class MainApp():
                     device=device,
                     is_train=True
                 )
-                latents = ret[0].view(64,64,4).permute(2,0,1)[None]
+                rendered_image = ret[0].view(self.H, self.W, 3)
+                rendered_image = rendered_image.permute(2,0,1)[None] # 1,3,512,512
 
-                
-                self.dreamfusion_step(text_embed, latents) #update gradient (backward)
+                self.dreamfusion_step(text_embed, rendered_image) #update gradient (backward)
                 self.optimizer.step()
                 self.update_learning_rate(step_id)
 
                 # tensorboard log
-                latent_min = torch.min(latents).detach().item()
-                latent_max = torch.max(latents).detach().item()
+                latent_min = torch.min(rendered_image).detach().item()
+                latent_max = torch.max(rendered_image).detach().item()
                 latent_diff = latent_max - latent_min
-                self.summary_writer.add_scalar('latents/min', latent_min, global_step=step_id)
-                self.summary_writer.add_scalar('latents/max', latent_max, global_step=step_id)
-                self.summary_writer.add_scalar('latents/distance', latent_diff, global_step=step_id)
+                self.summary_writer.add_scalar('rendered_image/min', latent_min, global_step=step_id)
+                self.summary_writer.add_scalar('rendered_image/max', latent_max, global_step=step_id)
+                self.summary_writer.add_scalar('rendered_image/distance', latent_diff, global_step=step_id)
                 if args.vis_every > 0 and step_id % args.vis_every == 0:
+                    depth_map = ret[2].view(self.H,self.W).cpu().numpy()
+                    depth_map, _ = visualize_depth_numpy(depth_map,self.test_dataset.near_far)
+                    depth_map = torch.from_numpy(depth_map).permute(2,0,1)
+
+                    self.summary_writer.add_image(f'train/predict', rendered_image[0], step_id)
+                    self.summary_writer.add_image(f'train/depth_map', depth_map, step_id)
+
                     self.validate_image(0, step_id)
                     self.validate_image(30, step_id)
                     self.validate_image(60, step_id)
@@ -234,15 +243,12 @@ class MainApp():
             device=device,
             is_train=False
         )
-        latents = ret[0].view(64,64,4).permute(2,0,1)[None]        
-        image = self.decode_latents(latents)
-        depth_map = ret[2].view(64,64).cpu().numpy()
-        latent_grid = torchvision.utils.make_grid(torch.sigmoid(latents)[0][:,None])
+        image = ret[0].view(self.H,self.W,3).permute(2,0,1)[None] # 1,3,512,512
+        depth_map = ret[2].view(self.H,self.W).cpu().numpy()
         depth_map, _ = visualize_depth_numpy(depth_map,self.test_dataset.near_far)
         depth_map = torch.from_numpy(depth_map).permute(2,0,1)
 
         self.summary_writer.add_image(f'validation_{img_id}/predict', image[0], step_id)
-        self.summary_writer.add_image(f'validation_{img_id}/latent_sigmoid', latent_grid, step_id)
         self.summary_writer.add_image(f'validation_{img_id}/depth', depth_map, step_id)
 
 
@@ -279,8 +285,19 @@ class MainApp():
         print(f'[INFO] loaded stable diffusion!')
 
 
-    def dreamfusion_step(self, text_embeddings, latents, guidance_scale=100):
+    def dreamfusion_step(self, text_embeddings, pred_rgb, guidance_scale=100):
+        if self.H != 512 and self.W != 512:
+            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+        else:
+            pred_rgb_512 = pred_rgb
+
+        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
+
+        # encode image into latents with vae, requires grad!
+        latents = self.encode_imgs(pred_rgb_512)
+
+        # predict the noise residual with unet, NO grad!
         with torch.no_grad():
             # add noise
             noise = torch.randn_like(latents)
@@ -297,7 +314,19 @@ class MainApp():
         w = (1 - self.alphas[t])
         grad = w * (noise_pred - noise)
 
+
+        # manually backward, since we omitted an item in grad and cannot simply autodiff.
         latents.backward(gradient=grad, retain_graph=True)
+
+    def encode_imgs(self, imgs):
+        # imgs: [B, 3, H, W]
+
+        imgs = 2 * imgs - 1
+
+        posterior = self.vae.encode(imgs).latent_dist
+        latents = posterior.sample() * 0.18215
+
+        return latents
 
 
 if __name__ == '__main__':

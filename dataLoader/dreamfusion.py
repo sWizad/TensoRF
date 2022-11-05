@@ -15,14 +15,14 @@ logging.set_verbosity_error()
 
 
 class DreamFusionDataset(Dataset):
-    def __init__(self, datadir="a high quality photo of a pineapple", split='train', iter=20000, **kwargs):
+    def __init__(self, datadir="a high quality photo of a pineapple", split='train', iter=20000, H=64, W=64, **kwargs):
         super().__init__()
         self.split = split
         self.ref_text = datadir
         self.iter = iter
         self.near_far = [0.1, 2.0]
-        self.H = 64
-        self.W = 64
+        self.H = H
+        self.W = W
         self.cx = self.H / 2
         self.cy = self.W / 2
         self.radius_range = [1.0, 1.5]

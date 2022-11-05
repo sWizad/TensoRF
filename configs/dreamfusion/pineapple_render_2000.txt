@@ -1,0 +1,37 @@
+
+dataset_name = dreamfusion
+datadir = data/nerf_synthetic/lego
+expname =  pineapple_render_2000
+basedir = ./log/dreamfusion/
+add_timestamp = 0
+
+model_name = TensoRF4ch
+
+n_iters = 30000
+checkpoint_every = 100
+batch_size = 4096
+
+N_voxel_init = 2097156 # 128**3
+N_voxel_final = 2097156 # 128**3
+upsamp_list = []
+update_AlphaMask_list = []
+
+N_vis = 5
+vis_every = 30000
+
+
+render_test = 1
+render_only = 1
+
+n_lamb_sigma = [16,16,16]
+n_lamb_sh = [48,48,48]
+
+shadingMode = MLP_Fea4
+fea2denseAct = softplus
+
+view_pe = 2
+fea_pe = 2
+
+L1_weight_inital = 8e-5
+L1_weight_rest = 4e-5
+rm_weight_mask_thre = 1e-4
